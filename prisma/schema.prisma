@@ -1,0 +1,582 @@
+// Prisma Schema for AI Itinerary Planner
+// Database: PostgreSQL
+// Enhanced with Authentication, OTP Verification, and Robust Architecture
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// ENUMS
+// ============================================
+
+enum UserRole {
+  USER
+  PREMIUM
+  ADMIN
+}
+
+enum SubscriptionTier {
+  FREE
+  PRO
+  PREMIUM
+}
+
+enum OtpType {
+  EMAIL_VERIFICATION
+  PHONE_VERIFICATION
+  PASSWORD_RESET
+}
+
+enum ItineraryStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum ItineraryVisibility {
+  PRIVATE
+  PUBLIC
+  SHARED
+}
+
+enum ActivityType {
+  ACTIVITY
+  FLIGHT
+  ACCOMMODATION
+  RESTAURANT
+  TRANSPORTATION
+  FOOD_DRINK
+  ACTIVITIES
+  SIGHTSEEING
+  ENTERTAINMENT
+  SHOPPING
+  MISCELLANEOUS
+}
+
+enum CollaboratorRole {
+  OWNER
+  EDITOR
+  VIEWER
+}
+
+// ============================================
+// USER & AUTHENTICATION
+// ============================================
+
+model User {
+  id                String    @id @default(cuid())
+  username          String?   @unique
+  name              String?
+  email             String    @unique
+  emailVerified     DateTime?
+  password          String?   // Hashed password for credential auth
+  phoneNumber       String?   @unique
+  isEmailVerified   Boolean   @default(false)
+  isPhoneVerified   Boolean   @default(false)
+  image             String?
+  bio               String?   @db.Text
+  location          String?
+  role              UserRole  @default(USER)
+  preferences       Json?     // User settings: currency, units, theme, etc.
+  isActive          Boolean   @default(true)
+  lastLoginAt       DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  // Subscription fields
+  subscriptionTier    SubscriptionTier @default(FREE)
+  subscriptionStatus  String           @default("active")
+  subscriptionStart   DateTime?
+  subscriptionEnd     DateTime?
+  stripeCustomerId    String?          @unique
+  
+  // Usage tracking
+  itinerariesThisMonth Int             @default(0)
+  lastResetDate        DateTime        @default(now())
+
+  // Social fields
+  followerCount   Int      @default(0)
+  followingCount  Int      @default(0)
+
+  // Relations
+  accounts           Account[]
+  sessions           Session[]
+  itineraries        Itinerary[]
+  savedItineraries   SavedItinerary[]
+  otpVerifications   OtpVerification[]
+  collaborations     ItineraryCollaborator[]
+  userPreferences    UserPreferences?
+  profile            UserProfile?
+  followers          Follow[]            @relation("Following")
+  following          Follow[]            @relation("Follower")
+  reviews            ItineraryReview[]
+  likes              ItineraryLike[]
+  clones             ItineraryClone[]
+  priceAlerts        PriceAlert[]
+  generationJobs     GenerationJob[]
+
+  @@index([email])
+  @@index([username])
+  @@index([role])
+  @@map("users")
+}
+
+// NextAuth.js models
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+// OTP Verification for Registration
+model OtpVerification {
+  id          String   @id @default(cuid())
+  userId      String?  // Nullable for pre-registration
+  email       String?
+  phoneNumber String?
+  otp         String   // Hashed OTP code
+  type        OtpType
+  expiresAt   DateTime
+  attempts    Int      @default(0)
+  isVerified  Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([email])
+  @@index([phoneNumber])
+  @@index([expiresAt])
+  @@map("otp_verifications")
+}
+
+// User Preferences (Separate table for better organization)
+model UserPreferences {
+  id                    String   @id @default(cuid())
+  userId                String   @unique
+  defaultCurrency       String   @default("USD")
+  temperatureUnit       String   @default("celsius") // celsius or fahrenheit
+  distanceUnit          String   @default("km") // km or miles
+  budgetRange           Json? // { min: number, max: number }
+  travelStyle           String[] // ["luxury", "budget", "adventure", etc.]
+  notificationEmail     Boolean  @default(true)
+  notificationPush      Boolean  @default(true)
+  privacyShowProfile    Boolean  @default(true)
+  privacyShowItinerary  Boolean  @default(false)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_preferences")
+}
+
+// ============================================
+// ITINERARY MANAGEMENT
+// ============================================
+
+model Itinerary {
+  id           String              @id @default(cuid())
+  userId       String
+  title        String              // New: explicit title field
+  destination  String
+  description  String?             @db.Text
+  duration     Int                 // Number of days (changed from String)
+  startDate    DateTime?
+  endDate      DateTime?
+  budgetAmount Float?              // Total budget amount (changed from String)
+  currency     String              @default("USD")
+  travelers    String?             // e.g. "2 adults", "Solo", "Family with kids"
+  preferences  Json?               // Custom preferences, diet, pacing, mobility
+  shareToken   String?             @unique @map("share_token") // Public share link token
+  tags         String[]            // Array of tags like ["Luxury", "Foodie"]
+  coverImage   String?             // Main cover image
+  images       String[]            @default([]) // Additional images
+  status       ItineraryStatus     @default(DRAFT)
+  visibility   ItineraryVisibility @default(PRIVATE)
+  rating       Float?              // User's personal rating
+  isFavorite   Boolean             @default(false)
+  metadata     Json?               // Flexible field for future data
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+
+  // Social fields
+  isPublic        Boolean  @default(false)
+  allowCloning    Boolean  @default(true)
+  viewCount       Int      @default(0)
+  likeCount       Int      @default(0)
+  cloneCount      Int      @default(0)
+  reviewCount     Int      @default(0)
+  averageRating   Float?
+
+  // Relations
+  user          User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  days          Day[]
+  budgetData    Budget?
+  savedBy       SavedItinerary[]
+  collaborators ItineraryCollaborator[]
+  reviews       ItineraryReview[]
+  likes         ItineraryLike[]
+  clonedFrom    ItineraryClone[]        @relation("OriginalItinerary")
+  clonedTo      ItineraryClone[]        @relation("ClonedItinerary")
+
+  @@index([userId])
+  @@index([status])
+  @@index([visibility])
+  @@index([createdAt])
+  @@index([userId, status, createdAt])
+  @@index([userId, isFavorite])
+  @@index([isPublic])
+  @@index([likeCount])
+  @@index([averageRating])
+  @@map("itineraries")
+}
+
+model Day {
+  id          String   @id @default(cuid())
+  itineraryId String
+  dayNumber   Int      // 1, 2, 3, etc.
+  title       String
+  date        DateTime // Changed from String to DateTime
+  theme       String?  // Daily focus or theme (e.g. "Historic Central & Landmarks")
+  description String?  @db.Text
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  itinerary  Itinerary  @relation(fields: [itineraryId], references: [id], onDelete: Cascade)
+  activities Activity[]
+
+  @@unique([itineraryId, dayNumber])
+  @@index([itineraryId])
+  @@map("days")
+}
+
+model Activity {
+  id           String       @id @default(cuid())
+  dayId        String
+  time         String       // "09:00 AM" - keeping as string for flexibility
+  title        String
+  description  String       @db.Text
+  type         ActivityType
+  locationLat  Float?
+  locationLng  Float?
+  locationName String?
+  address      String?      // Full address
+  duration     Int?         // Duration in minutes
+  cost         Float?       // Estimated cost
+  bookingUrl   String?      // Link to booking
+  notes        String?      @db.Text
+  flightInfo   Json?        // Flight details (airline, flight number, etc.)
+  placeId      String?      @map("place_id")
+  position     Int?         // Ordering sequence within the day
+  indoor       Boolean?     @default(false)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  // Relations
+  day     Day          @relation(fields: [dayId], references: [id], onDelete: Cascade)
+  place   Place?       @relation(fields: [placeId], references: [id], onDelete: SetNull)
+  expense Expense?
+  alerts  PriceAlert[]
+
+  @@index([dayId])
+  @@index([type])
+  @@index([placeId])
+  @@map("activities")
+}
+
+// Saved Itineraries (User's saved collection)
+model SavedItinerary {
+  id          String   @id @default(cuid())
+  userId      String
+  itineraryId String
+  folder      String?  // Optional folder/collection name
+  notes       String?  @db.Text
+  savedAt     DateTime @default(now())
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  itinerary Itinerary @relation(fields: [itineraryId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, itineraryId])
+  @@index([userId])
+  @@index([folder])
+  @@map("saved_itineraries")
+}
+
+// Itinerary Collaboration
+model ItineraryCollaborator {
+  id          String           @id @default(cuid())
+  itineraryId String
+  userId      String
+  role        CollaboratorRole
+  invitedAt   DateTime         @default(now())
+  acceptedAt  DateTime?
+
+  itinerary Itinerary @relation(fields: [itineraryId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([itineraryId, userId])
+  @@index([userId])
+  @@map("itinerary_collaborators")
+}
+
+// ============================================
+// BUDGET TRACKING
+// ============================================
+
+model Budget {
+  id             String   @id @default(cuid())
+  itineraryId    String   @unique
+  estimatedTotal Float    // Estimated total budget
+  actualTotal    Float    @default(0) // Actual spent amount
+  currency       String   @default("USD")
+  categoryBudgets Json?   // Per-category budget allocation
+  isShared       Boolean  @default(false)
+  notes          String?  @db.Text
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  // Relations
+  itinerary Itinerary @relation(fields: [itineraryId], references: [id], onDelete: Cascade)
+  expenses  Expense[]
+
+  @@map("budgets")
+}
+
+model Expense {
+  id            String       @id @default(cuid())
+  budgetId      String
+  activityId    String?      @unique // Optional link to activity
+  amount        Float
+  category      ActivityType
+  title         String
+  description   String?      @db.Text
+  isPaid        Boolean      @default(false)
+  paidAt        DateTime?
+  paymentMethod String?      // cash, card, online, etc.
+  receipt       String?      // Receipt image/document URL
+  tags          String[]     @default([])
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  // Relations
+  budget   Budget    @relation(fields: [budgetId], references: [id], onDelete: Cascade)
+  activity Activity? @relation(fields: [activityId], references: [id], onDelete: SetNull)
+
+  @@index([budgetId])
+  @@index([category])
+  @@index([isPaid])
+  @@map("expenses")
+}
+
+// ============================================
+// SOCIAL & COLLABORATION FEATURES
+// ============================================
+
+// User Profile Extensions
+model UserProfile {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  bio             String?  @db.Text
+  location        String?
+  website         String?
+  travelStyle     String[] @default([]) // ["Adventure", "Luxury", "Budget"]
+  visitedCountries Int     @default(0)
+  totalTrips      Int      @default(0)
+  coverImage      String?
+  socialLinks     Json?    // { twitter: "", instagram: "" }
+  isPublic        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_profiles")
+}
+
+// Social Following
+model Follow {
+  id          String   @id @default(cuid())
+  followerId  String   // User who follows
+  followingId String   // User being followed
+  createdAt   DateTime @default(now())
+
+  follower    User     @relation("Follower", fields: [followerId], references: [id], onDelete: Cascade)
+  following   User     @relation("Following", fields: [followingId], references: [id], onDelete: Cascade)
+
+  @@unique([followerId, followingId])
+  @@index([followerId])
+  @@index([followingId])
+  @@map("follows")
+}
+
+// Itinerary Reviews
+model ItineraryReview {
+  id          String   @id @default(cuid())
+  itineraryId String
+  userId      String
+  rating      Int      // 1-5 stars
+  title       String?
+  comment     String?  @db.Text
+  helpful     Int      @default(0)
+  images      String[] @default([])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  itinerary   Itinerary @relation(fields: [itineraryId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([itineraryId, userId])
+  @@index([itineraryId])
+  @@index([userId])
+  @@index([rating])
+  @@map("itinerary_reviews")
+}
+
+// Itinerary Likes
+model ItineraryLike {
+  id          String   @id @default(cuid())
+  itineraryId String
+  userId      String
+  createdAt   DateTime @default(now())
+
+  itinerary   Itinerary @relation(fields: [itineraryId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([itineraryId, userId])
+  @@index([itineraryId])
+  @@index([userId])
+  @@map("itinerary_likes")
+}
+
+// Itinerary Clones (when users copy community itineraries)
+model ItineraryClone {
+  id              String   @id @default(cuid())
+  originalId      String   // Original itinerary
+  clonedId        String   // Cloned itinerary
+  userId          String   // User who cloned
+  createdAt       DateTime @default(now())
+
+  original        Itinerary @relation("OriginalItinerary", fields: [originalId], references: [id], onDelete: Cascade)
+  cloned          Itinerary @relation("ClonedItinerary", fields: [clonedId], references: [id], onDelete: Cascade)
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([originalId])
+  @@index([clonedId])
+  @@index([userId])
+  @@map("itinerary_clones")
+}
+
+// Price Alerts for Flights/Hotels
+model PriceAlert {
+  id           String       @id @default(cuid())
+  userId       String
+  activityId   String?      // Optional: link to a specific activity
+  type         ActivityType // FLIGHT, ACCOMMODATION
+  
+  // Search criteria stored as JSON
+  // Flight: { origin, destination, date, flightNumber? }
+  // Hotel: { location, checkIn, checkOut, hotelName? }
+  criteria     Json
+  
+  targetPrice  Float?       // Alert if price drops below this
+  currentPrice Float?       // Last checked/known price
+  currency     String       @default("USD")
+  
+  isActive     Boolean      @default(true)
+  triggered    Boolean      @default(false) // If alert has been sent
+  
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  activity     Activity?    @relation(fields: [activityId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([isActive])
+  @@map("price_alerts")
+}
+
+// Verified Places Cache (OpenStreetMap / Nominatim / Mapbox resolved)
+model Place {
+  id               String     @id @default(cuid())
+  name             String
+  formattedAddress String?    @map("formatted_address")
+  lat              Float
+  lng              Float
+  category         String?
+  placeId          String?    @unique @map("place_id")
+  metadata         Json?
+  createdAt        DateTime   @default(now()) @map("created_at")
+  updatedAt        DateTime   @updatedAt @map("updated_at")
+
+  // Relations
+  activities       Activity[]
+
+  @@index([name])
+  @@index([category])
+  @@map("places")
+}
+
+// Generation Job Tracker for async generation & SSE streaming
+model GenerationJob {
+  id        String   @id @default(cuid())
+  userId    String?  @map("user_id")
+  status    String   @default("pending") // pending | processing | completed | failed
+  progress  Int      @default(0)         // 0 - 100
+  step      String?                      // Step label for client UI
+  payload   Json?                        // Input parameters
+  result    Json?                        // Structured itinerary JSON
+  error     String?                      // Error details if failed
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("generation_jobs")
+}
+

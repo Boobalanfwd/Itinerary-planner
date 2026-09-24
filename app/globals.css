@@ -1,0 +1,334 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-sans);
+  --font-serif-logo: var(--font-serif-logo);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-soft-foreground: var(--accent-soft-foreground);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-soft: var(--primary-soft);
+  --color-primary-soft-foreground: var(--primary-soft-foreground);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-indigo: var(--indigo);
+  --color-indigo-foreground: var(--indigo-foreground);
+  --color-tag-lavender: var(--tag-lavender);
+  --color-tag-lavender-foreground: var(--tag-lavender-foreground);
+  --color-tag-mint: var(--tag-mint);
+  --color-tag-mint-foreground: var(--tag-mint-foreground);
+  --color-tag-peach: var(--tag-peach);
+  --color-tag-peach-foreground: var(--tag-peach-foreground);
+  --color-tag-date: var(--tag-date);
+  --color-tag-date-foreground: var(--tag-date-foreground);
+  --radius-sm: calc(var(--radius) - 6px);
+  --radius-md: calc(var(--radius) - 4px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --shadow-soft-xs: 0 1px 3px rgba(16, 24, 40, 0.04);
+  --shadow-soft: 0 4px 20px -2px rgba(22, 40, 59, 0.06), 0 2px 6px -1px rgba(22, 40, 59, 0.03);
+  --shadow-soft-lg: 0 14px 34px -4px rgba(22, 40, 59, 0.08), 0 4px 14px -2px rgba(22, 40, 59, 0.04);
+  --shadow-soft-xl: 0 24px 50px -8px rgba(22, 40, 59, 0.12), 0 8px 20px -4px rgba(22, 40, 59, 0.05);
+}
+
+/* Hide Mapbox logo and attribution */
+.mapboxgl-ctrl-logo,
+.mapboxgl-ctrl-attrib,
+.mapboxgl-ctrl-attrib-inner,
+.mapboxgl-compact {
+  display: none !important;
+  opacity: 0 !important;
+  visibility: hidden !important;
+}
+
+:root {
+  --radius: 1rem; /* 16px - rounded-2xl base card radius */
+
+  /* ── Canvas & Surface Tokens ────────────────────────────────────────────── */
+  --background: #F8F9F8;
+  --foreground: #16283B;
+  --card: #FFFFFF;
+  --card-foreground: #16283B;
+  --popover: #FFFFFF;
+  --popover-foreground: #16283B;
+
+  /* ── Primary Brand: Warm Orange ~#F68B3C ───────────────────────────────── */
+  --primary: #F68B3C;
+  --primary-foreground: #FFFFFF;
+  --primary-hover: #E77826;
+  --primary-soft: #FFF1E6;
+  --primary-soft-foreground: #D96A19;
+
+  /* ── Accent: Emerald Green ~#1DBF8A ────────────────────────────────────── */
+  --accent: #1DBF8A;
+  --accent-foreground: #FFFFFF;
+  --accent-soft: #E6F9F3;
+  --accent-soft-foreground: #0E8B62;
+
+  /* ── Secondary & Muted ─────────────────────────────────────────────────── */
+  --secondary: #F1F3F2;
+  --secondary-foreground: #16283B;
+  --muted: #EFF1EF;
+  --muted-foreground: #6B7280;
+
+  --destructive: #EF4444;
+  --destructive-foreground: #FFFFFF;
+
+  /* ── 1px Light Neutral Borders ─────────────────────────────────────────── */
+  --border: #E6E8E6;
+  --input: #E6E8E6;
+  --ring: #F68B3C;
+
+  /* ── Sidebar: Slightly Warm Off-White ───────────────────────────────────── */
+  --sidebar: #F3F4F3;
+  --sidebar-foreground: #16283B;
+  --sidebar-primary: #F68B3C;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: #E5E7E5;
+  --sidebar-accent-foreground: #16283B;
+  --sidebar-border: #E6E8E6;
+  --sidebar-ring: #F68B3C;
+
+  /* ── Deep Navy / Indigo Feature Accent ─────────────────────────────────── */
+  --indigo: #2E2A6B;
+  --indigo-foreground: #FFFFFF;
+
+  /* ── Soft Tinted Chips ─────────────────────────────────────────────────── */
+  --tag-lavender: #F0EDFF;
+  --tag-lavender-foreground: #5B44C4;
+  --tag-mint: #E6F9F3;
+  --tag-mint-foreground: #0E8B62;
+  --tag-peach: #FFEDE2;
+  --tag-peach-foreground: #D35E17;
+  --tag-date: #FFF0E6;
+  --tag-date-foreground: #D96A19;
+
+  /* Charts */
+  --chart-1: #F68B3C;
+  --chart-2: #1DBF8A;
+  --chart-3: #2E2A6B;
+  --chart-4: #F59E0B;
+  --chart-5: #3B82F6;
+}
+
+.dark {
+  --radius: 1rem;
+
+  /* ── Dark Canvas & Surface Tokens ──────────────────────────────────────── */
+  --background: #0D1520;
+  --foreground: #F1F5F9;
+  --card: #131E2D;
+  --card-foreground: #F1F5F9;
+  --popover: #131E2D;
+  --popover-foreground: #F1F5F9;
+
+  /* ── Primary Brand in Dark: Bright Warm Orange ─────────────────────────── */
+  --primary: #F68B3C;
+  --primary-foreground: #FFFFFF;
+  --primary-hover: #FA9A55;
+  --primary-soft: rgba(246, 139, 60, 0.16);
+  --primary-soft-foreground: #FBA86B;
+
+  /* ── Accent in Dark: Luminous Emerald ───────────────────────────────────── */
+  --accent: #1DBF8A;
+  --accent-foreground: #FFFFFF;
+  --accent-soft: rgba(29, 191, 138, 0.16);
+  --accent-soft-foreground: #34D399;
+
+  /* ── Secondary & Muted in Dark ─────────────────────────────────────────── */
+  --secondary: #1A2637;
+  --secondary-foreground: #F1F5F9;
+  --muted: #182333;
+  --muted-foreground: #94A3B8;
+
+  --destructive: #F87171;
+  --destructive-foreground: #FFFFFF;
+
+  /* ── Borders in Dark ───────────────────────────────────────────────────── */
+  --border: rgba(255, 255, 255, 0.09);
+  --input: rgba(255, 255, 255, 0.11);
+  --ring: #F68B3C;
+
+  /* ── Sidebar in Dark ───────────────────────────────────────────────────── */
+  --sidebar: #101926;
+  --sidebar-foreground: #F1F5F9;
+  --sidebar-primary: #F68B3C;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: #172334;
+  --sidebar-accent-foreground: #F1F5F9;
+  --sidebar-border: rgba(255, 255, 255, 0.08);
+  --sidebar-ring: #F68B3C;
+
+  /* ── Indigo in Dark ────────────────────────────────────────────────────── */
+  --indigo: #3D3787;
+  --indigo-foreground: #FFFFFF;
+
+  /* ── Soft Tinted Chips in Dark ─────────────────────────────────────────── */
+  --tag-lavender: rgba(139, 92, 246, 0.18);
+  --tag-lavender-foreground: #C4B5FD;
+  --tag-mint: rgba(29, 191, 138, 0.18);
+  --tag-mint-foreground: #6EE7B7;
+  --tag-peach: rgba(246, 139, 60, 0.18);
+  --tag-peach-foreground: #FDBA74;
+  --tag-date: rgba(246, 139, 60, 0.22);
+  --tag-date-foreground: #FED7AA;
+
+  /* Charts */
+  --chart-1: #F68B3C;
+  --chart-2: #34D399;
+  --chart-3: #818CF8;
+  --chart-4: #FBBF24;
+  --chart-5: #60A5FA;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: var(--font-sans), ui-sans-serif, system-ui, -apple-system, sans-serif;
+  }
+  h1, h2, h3, h4, h5, h6 {
+    @apply text-foreground font-bold tracking-tight;
+  }
+}
+
+/* ── Typography & Brand Utilities ─────────────────────────────────────────── */
+@layer utilities {
+  .font-serif-logo {
+    font-family: var(--font-serif-logo), "Playfair Display", Georgia, serif;
+    font-variant-caps: small-caps;
+    letter-spacing: 0.05em;
+  }
+
+  /* Soft card shadows */
+  .shadow-soft {
+    box-shadow: var(--shadow-soft);
+  }
+  .shadow-soft-lg {
+    box-shadow: var(--shadow-soft-lg);
+  }
+  .shadow-soft-xl {
+    box-shadow: var(--shadow-soft-xl);
+  }
+
+  /* Hover lift card animation */
+  .hover-lift {
+    transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .hover-lift:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-soft-lg);
+  }
+
+  /* Subtle blob animation for decorative backdrops */
+  .animate-blob {
+    animation: blob 9s infinite ease-in-out;
+  }
+  .animation-delay-2000 { animation-delay: 2s; }
+  .animation-delay-4000 { animation-delay: 4s; }
+}
+
+@keyframes blob {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33%       { transform: translate(24px, -36px) scale(1.06); }
+  66%       { transform: translate(-16px, 16px) scale(0.95); }
+}
+
+/* ── Mapbox Popup & Controls ─────────────────────────────────────────────── */
+.wander-mapbox-popup .mapboxgl-popup-content {
+  background: var(--card) !important;
+  color: var(--foreground) !important;
+  border-radius: 1rem !important;
+  border: 1px solid var(--border) !important;
+  box-shadow: var(--shadow-soft-lg) !important;
+  padding: 0.75rem !important;
+}
+
+.wander-mapbox-popup .mapboxgl-popup-tip {
+  border-top-color: var(--card) !important;
+  border-bottom-color: var(--card) !important;
+}
+
+.wander-mapbox-popup .mapboxgl-popup-close-button {
+  font-size: 16px !important;
+  color: var(--muted-foreground) !important;
+  padding: 4px 8px !important;
+  top: 4px !important;
+  right: 6px !important;
+}
+
+.wander-mapbox-popup .mapboxgl-popup-close-button:hover {
+  color: var(--foreground) !important;
+  background: transparent !important;
+}
+
+.mapboxgl-ctrl-group {
+  background: var(--card) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 0.75rem !important;
+  box-shadow: var(--shadow-soft) !important;
+  overflow: hidden !important;
+}
+
+.mapboxgl-ctrl-group button {
+  border-bottom: 1px solid var(--border) !important;
+}
+
+.mapboxgl-ctrl-group button:last-child {
+  border-bottom: none !important;
+}
+
+/* ── Scrollbar Utilities ─────────────────────────────────────────────────── */
+@utility no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none !important;
+  scrollbar-width: none !important;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
