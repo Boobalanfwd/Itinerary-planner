@@ -14,7 +14,11 @@ export function ItineraryViewWrapper({ data, children }: ItineraryViewWrapperPro
   const router = useRouter();
 
   const handleBack = () => {
-    router.back();
+    if (typeof window !== "undefined" && window.history.length > 2) {
+      router.back();
+    } else {
+      router.push("/dashboard/itineraries");
+    }
   };
 
   if (children) {
@@ -22,10 +26,21 @@ export function ItineraryViewWrapper({ data, children }: ItineraryViewWrapperPro
   }
 
   return (
-    <SplitItineraryView
-      initialData={data}
-      onBack={handleBack}
-    />
+    <React.Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center bg-background">
+          <div className="flex flex-col items-center gap-3">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+            <p className="text-xs text-muted-foreground font-mono">Loading itinerary...</p>
+          </div>
+        </div>
+      }
+    >
+      <SplitItineraryView
+        initialData={data}
+        onBack={handleBack}
+      />
+    </React.Suspense>
   );
 }
 

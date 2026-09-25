@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useState } from "react";
-import { useRouter } from "next/navigation";
+import React, { useState, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   Sparkles,
   MapPin,
@@ -133,6 +133,7 @@ interface TripCreationFormProps {
 
 export function TripCreationForm({ onSuccess, className = "" }: TripCreationFormProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   // Mode: "structured" (unified all-in-one form) vs "prompt" (free-form AI text)
   const [activeTab, setActiveTab] = useState<"structured" | "prompt">("structured");
@@ -154,6 +155,26 @@ export function TripCreationForm({ onSuccess, className = "" }: TripCreationForm
 
   // Free-form prompt state
   const [freeformPrompt, setFreeformPrompt] = useState("");
+
+  // Check for restored prompt from landing page
+  useEffect(() => {
+    try {
+      const paramPrompt = searchParams.get("prompt");
+      const storedPrompt = sessionStorage.getItem("pending_trip_prompt");
+      const initialPrompt = paramPrompt || storedPrompt;
+
+      if (initialPrompt && initialPrompt.trim()) {
+        setFreeformPrompt(initialPrompt.trim());
+        setActiveTab("prompt");
+        sessionStorage.removeItem("pending_trip_prompt");
+        toast.info("Restored your trip prompt!", {
+          description: `"${initialPrompt.trim()}"`,
+        });
+      }
+    } catch (e) {
+      // Non-blocking
+    }
+  }, [searchParams]);
 
   // Loading & Submission State
   const [isGenerating, setIsGenerating] = useState(false);

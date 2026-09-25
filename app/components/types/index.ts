@@ -73,6 +73,7 @@ export interface Day {
 
 export interface ItineraryData {
   id?: string; // Database ID (optional for new itineraries)
+  userId?: string; // Owner user ID
   destination: string;
   duration: string | number; // Allow number for day count
   budget: string | number; // Allow number for amount
@@ -98,6 +99,7 @@ export interface ItineraryData {
   cloneCount?: number;
   reviewCount?: number;
   averageRating?: number;
+  metadata?: any;
 }
 
 export type ViewState = "landing" | "loading" | "itinerary" | "error" | "map";

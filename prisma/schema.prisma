@@ -62,8 +62,16 @@ enum ActivityType {
 
 enum CollaboratorRole {
   OWNER
+  TRAVELER
   EDITOR
   VIEWER
+}
+
+enum InviteStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  EXPIRED
 }
 
 // ============================================
@@ -121,6 +129,16 @@ model User {
   clones             ItineraryClone[]
   priceAlerts        PriceAlert[]
   generationJobs     GenerationJob[]
+  comments           Comment[]
+  commentReactions   CommentReaction[]
+  polls              Poll[]
+  pollVotes          PollVote[]
+  journalEntries     JournalEntry[]
+  userNotifications  Notification[]          @relation("UserNotifications")
+  sentNotifications  Notification[]          @relation("SentNotifications")
+  activityLogs       ActivityLog[]
+  invitedCollaborations ItineraryCollaborator[] @relation("InvitedByUser")
+  memoryBooks        MemoryBook[]
 
   @@index([email])
   @@index([username])
@@ -248,12 +266,20 @@ model Itinerary {
   reviewCount     Int      @default(0)
   averageRating   Float?
 
+  tripStatus      String?                 @default("planning") // planning | active | completed
+
   // Relations
   user          User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
   days          Day[]
   budgetData    Budget?
   savedBy       SavedItinerary[]
   collaborators ItineraryCollaborator[]
+  comments      Comment[]
+  polls         Poll[]
+  journalEntries JournalEntry[]
+  tripSummaries TripSummary[]
+  memoryBooks   MemoryBook[]
+  activityLogs  ActivityLog[]
   reviews       ItineraryReview[]
   likes         ItineraryLike[]
   clonedFrom    ItineraryClone[]        @relation("OriginalItinerary")
@@ -310,14 +336,17 @@ model Activity {
   placeId      String?      @map("place_id")
   position     Int?         // Ordering sequence within the day
   indoor       Boolean?     @default(false)
+  lockedByUserId String?
+  lockedAt       DateTime?
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
 
   // Relations
-  day     Day          @relation(fields: [dayId], references: [id], onDelete: Cascade)
-  place   Place?       @relation(fields: [placeId], references: [id], onDelete: SetNull)
-  expense Expense?
-  alerts  PriceAlert[]
+  day         Day          @relation(fields: [dayId], references: [id], onDelete: Cascade)
+  place       Place?       @relation(fields: [placeId], references: [id], onDelete: SetNull)
+  expense     Expense?
+  alerts      PriceAlert[]
+  linkedPolls Poll[]
 
   @@index([dayId])
   @@index([type])
@@ -345,18 +374,24 @@ model SavedItinerary {
 
 // Itinerary Collaboration
 model ItineraryCollaborator {
-  id          String           @id @default(cuid())
-  itineraryId String
-  userId      String
-  role        CollaboratorRole
-  invitedAt   DateTime         @default(now())
-  acceptedAt  DateTime?
+  id               String           @id @default(cuid())
+  itineraryId      String
+  userId           String
+  role             CollaboratorRole @default(TRAVELER)
+  inviteStatus     InviteStatus     @default(ACCEPTED)
+  invitedEmail     String?
+  invitedByUserId  String?
+  sectionOverrides Json?            // e.g. { "FOOD_DRINK": "EDITOR", "FLIGHT": "VIEWER" }
+  invitedAt        DateTime         @default(now())
+  acceptedAt       DateTime?
 
-  itinerary Itinerary @relation(fields: [itineraryId], references: [id], onDelete: Cascade)
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  itinerary     Itinerary @relation(fields: [itineraryId], references: [id], onDelete: Cascade)
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  invitedByUser User?     @relation("InvitedByUser", fields: [invitedByUserId], references: [id], onDelete: SetNull)
 
   @@unique([itineraryId, userId])
   @@index([userId])
+  @@index([inviteStatus])
   @@map("itinerary_collaborators")
 }
 
@@ -578,5 +613,232 @@ model GenerationJob {
   @@index([status])
   @@index([createdAt])
   @@map("generation_jobs")
+}
+
+// ============================================
+// REAL-TIME COLLABORATIVE EDITING & COMMENTS
+// ============================================
+
+model Comment {
+  id           String            @id @default(cuid())
+  itineraryId  String
+  anchorType   String            // "activity" | "place" | "day" | "itinerary"
+  anchorId     String            // activityId, dayId, placeId, or itineraryId
+  userId       String
+  parentId     String?           // For threaded replies
+  text         String            @db.Text
+  attachments  Json?             // Array of { type: "photo" | "link", url: string, name?: string }
+  resolved     Boolean           @default(false)
+  resolvedById String?
+  resolvedAt   DateTime?
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  itinerary    Itinerary         @relation(fields: [itineraryId], references: [id], onDelete: Cascade)
+  user         User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parent       Comment?          @relation("ThreadReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies      Comment[]         @relation("ThreadReplies")
+  reactions    CommentReaction[]
+
+  @@index([itineraryId])
+  @@index([anchorType, anchorId])
+  @@index([userId])
+  @@map("comments")
+}
+
+model CommentReaction {
+  id        String   @id @default(cuid())
+  commentId String
+  userId    String
+  emoji     String   // e.g. "👍", "❤️", "🔥", "🎉"
+  createdAt DateTime @default(now())
+
+  comment   Comment  @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([commentId, userId, emoji])
+  @@map("comment_reactions")
+}
+
+// ============================================
+// GROUP VOTING & POLLS
+// ============================================
+
+model Poll {
+  id               String       @id @default(cuid())
+  itineraryId      String
+  title            String
+  description      String?      @db.Text
+  category         String?      // "activity" | "restaurant" | "accommodation" | "transport"
+  voteType         String       @default("thumbs") // "thumbs" | "star" | "ranked"
+  deadline         DateTime?
+  status           String       @default("active") // "active" | "closed"
+  linkedActivityId String?
+  winnerOptionId   String?
+  creatorId        String
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  itinerary        Itinerary    @relation(fields: [itineraryId], references: [id], onDelete: Cascade)
+  creator          User         @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  linkedActivity   Activity?    @relation(fields: [linkedActivityId], references: [id], onDelete: SetNull)
+  options          PollOption[]
+  votes            PollVote[]
+
+  @@index([itineraryId])
+  @@map("polls")
+}
+
+model PollOption {
+  id          String     @id @default(cuid())
+  pollId      String
+  title       String
+  description String?
+  photoUrl    String?
+  position    Int        @default(0)
+  createdAt   DateTime   @default(now())
+
+  poll        Poll       @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  votes       PollVote[]
+
+  @@index([pollId])
+  @@map("poll_options")
+}
+
+model PollVote {
+  id        String     @id @default(cuid())
+  pollId    String
+  optionId  String
+  userId    String
+  value     Int        @default(1) // 1 or -1 for thumbs, 1..5 for star, rank index for ranked
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  poll      Poll       @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  option    PollOption @relation(fields: [optionId], references: [id], onDelete: Cascade)
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([pollId, optionId, userId])
+  @@index([pollId])
+  @@index([userId])
+  @@map("poll_votes")
+}
+
+// ============================================
+// POST-TRIP MEMORY JOURNALS & BOOKS
+// ============================================
+
+model JournalEntry {
+  id           String    @id @default(cuid())
+  itineraryId  String
+  authorId     String
+  dayNumber    Int?
+  date         DateTime  @default(now())
+  title        String?
+  notes        String    @db.Text
+  mood         String?   // "relaxed", "adventurous", "romantic", "thrilled", "nostalgic"
+  mediaType    String    @default("photo") // "photo" | "video" | "voice" | "text"
+  photos       String[]  @default([])
+  audioUrl     String?
+  videoUrl     String?
+  locationLat  Float?
+  locationLng  Float?
+  locationName String?
+  tags         String[]  @default([])
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  itinerary    Itinerary @relation(fields: [itineraryId], references: [id], onDelete: Cascade)
+  author       User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([itineraryId])
+  @@index([authorId])
+  @@index([date])
+  @@map("journal_entries")
+}
+
+model TripSummary {
+  id              String    @id @default(cuid())
+  itineraryId     String
+  narrative       String    @db.Text
+  highlights      String[]  @default([])
+  standoutMoments Json?     // Array of { title, description, photoUrl? }
+  tone            String    @default("sentimental") // "sentimental" | "adventurous" | "funny" | "concise"
+  stats           Json?     // { distanceKm: number, placesVisited: number, daysAway: number, photosCount: number }
+  aiGenerated     Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  itinerary       Itinerary @relation(fields: [itineraryId], references: [id], onDelete: Cascade)
+
+  @@index([itineraryId])
+  @@map("trip_summaries")
+}
+
+model MemoryBook {
+  id              String    @id @default(cuid())
+  itineraryId     String
+  title           String
+  subtitle        String?
+  coverPhoto      String?
+  layoutTemplate  String    @default("magazine") // "grid" | "magazine" | "scrapbook"
+  visibility      String    @default("collaborators") // "public" | "collaborators" | "private"
+  collaborative   Boolean   @default(true)
+  customCaptions  Json?     // Map of entryId or photoUrl -> custom text
+  selectedEntries String[]  @default([]) // Ordered list of journalEntry IDs
+  authorId        String
+  shareToken      String?   @unique
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  itinerary       Itinerary @relation(fields: [itineraryId], references: [id], onDelete: Cascade)
+  author          User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([itineraryId])
+  @@map("memory_books")
+}
+
+// ============================================
+// NOTIFICATIONS & ACTIVITY LOG
+// ============================================
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String   // Target user receiving notification
+  actorId   String?  // User who triggered the action
+  type      String   // "INVITE" | "INVITE_ACCEPTED" | "INVITE_DECLINED" | "COMMENT" | "MENTION" | "POLL_CREATED" | "POLL_DEADLINE" | "MEMORY_BOOK"
+  title     String
+  message   String
+  linkUrl   String?
+  data      Json?    // e.g. { tripId, inviteId, role, commentId, pollId }
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user      User     @relation("UserNotifications", fields: [userId], references: [id], onDelete: Cascade)
+  actor     User?    @relation("SentNotifications", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([isRead])
+  @@index([createdAt])
+  @@map("notifications")
+}
+
+model ActivityLog {
+  id          String    @id @default(cuid())
+  itineraryId String
+  userId      String
+  action      String    // "CREATED" | "UPDATED" | "DELETED" | "MOVED" | "COMMENTED" | "VOTED" | "INVITED"
+  entityType  String    // "ACTIVITY" | "DAY" | "POLL" | "COMMENT" | "COLLABORATOR"
+  entityId    String?
+  summary     String    // e.g. "Sam moved Dinner from 7pm → 8pm"
+  details     Json?     // Old vs new values for diff
+  createdAt   DateTime  @default(now())
+
+  itinerary   Itinerary @relation(fields: [itineraryId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([itineraryId])
+  @@index([createdAt])
+  @@map("activity_logs")
 }
 

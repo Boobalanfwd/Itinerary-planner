@@ -11,6 +11,7 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { z } from "zod";
 import { env } from "@/lib/env";
+import { PackingList, PackingListSchema } from "@/schemas/packingList";
 
 // ── Zod schema for the LLM's output ─────────────────────────────────────────
 // The AI must NOT return coordinates, opening hours, or ratings.
@@ -408,6 +409,137 @@ Return a fresh set of 3 to 6 curated activities with realistic timing, themes, a
     const parsed = AiDaySchema.parse(raw);
 
     return { day: parsed, usage };
+  }
+
+  /**
+   * Generate an intelligent, categorized packing list tailored to the destination,
+   * duration, activities, and real-time weather.
+   */
+  async generatePackingList(params: {
+    destination: string;
+    duration: number;
+    startDate?: string | Date | null;
+    endDate?: string | Date | null;
+    travelers?: string | null;
+    activities?: string[];
+    weatherSummary?: string | null;
+  }): Promise<{ packingList: PackingList; usage: TokenUsage }> {
+    const {
+      destination,
+      duration,
+      startDate,
+      endDate,
+      travelers,
+      activities = [],
+      weatherSummary,
+    } = params;
+
+    const startStr = startDate ? new Date(startDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "";
+    const endStr = endDate ? new Date(endDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "";
+    const datesDesc = startStr && endStr ? `${startStr} to ${endStr}` : startStr || "Flexible";
+
+    const prompt = `You are a world-class travel advisor and master packing strategist.
+Generate an intelligent, highly practical, and categorized packing checklist for the following trip:
+
+Trip Details:
+- Destination: ${this.sanitiseUserInput(destination)}
+- Duration: ${duration} days
+- Travel Dates: ${datesDesc}
+- Travelers: ${travelers ? this.sanitiseUserInput(travelers) : "Standard traveler(s)"}
+- Planned Activities / Highlights: ${activities.length > 0 ? activities.slice(0, 15).map(a => this.sanitiseUserInput(a)).join(", ") : "Sightseeing, dining, local exploration"}
+- Weather Forecast & Climate Context: ${weatherSummary ? this.sanitiseUserInput(weatherSummary) : "Typical seasonal weather"}
+
+Requirements:
+1. Provide comprehensive, realistic categories (e.g. "Clothing & Layers", "Documents & Money", "Electronics & Adapters", "Toiletries & Grooming", "Health & First Aid", "Activity Gear", "Comfort & Convenience").
+2. Include a fitting emoji for each category.
+3. For each item:
+   - "item": Clear, descriptive item name with recommended quantity if relevant (e.g. "Breathable t-shirts (3-4x)", "Comfortable walking shoes (broken-in)").
+   - "essential": boolean (true for must-haves like passport, medications, chargers, power adapters; false for optional/nice-to-haves).
+   - "notes": optional short tip (e.g., "Keep in personal item", "Local power is Type C/F 230V").
+4. Provide 3 to 5 destination-specific packing tips in the "tips" array (e.g., local cultural dress codes, outlet plug standards, tap water safety, seasonal quirks).
+
+Return strictly a valid JSON object matching this schema:
+{
+  "categories": [
+    {
+      "name": "string",
+      "emoji": "string",
+      "items": [
+        { "item": "string", "essential": boolean, "notes": "string (optional)" }
+      ]
+    }
+  ],
+  "tips": ["string"]
+}`;
+
+    const usage: TokenUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
+    const candidateModels = [
+      this.modelName,
+      "gemini-3.6-flash",
+      "gemini-2.5-flash",
+      "gemini-flash-latest",
+    ];
+
+    let response: any = null;
+    let lastError: any = null;
+
+    for (const model of candidateModels) {
+      try {
+        response = await this.ai.models.generateContent({
+          model,
+          contents: prompt,
+          config: {
+            systemInstruction: "You are a professional packing strategist. Always respond with clean, valid JSON only. Never use markdown code blocks outside of raw JSON.",
+            temperature: 0.6,
+            maxOutputTokens: 6000,
+            responseMimeType: "application/json",
+          },
+        });
+        break;
+      } catch (err) {
+        lastError = err;
+      }
+    }
+
+    if (!response) {
+      throw new Error(`Failed to generate packing list: ${lastError?.message || lastError}`);
+    }
+
+    const meta = response.usageMetadata;
+    if (meta) {
+      usage.promptTokens += meta.promptTokenCount ?? 0;
+      usage.completionTokens += meta.candidatesTokenCount ?? 0;
+      usage.totalTokens += meta.totalTokenCount ?? 0;
+    }
+
+    const text = response.text ?? "";
+    let cleanJson = text.trim();
+    if (cleanJson.startsWith("```json")) {
+      cleanJson = cleanJson.slice(7);
+    }
+    if (cleanJson.startsWith("```")) {
+      cleanJson = cleanJson.slice(3);
+    }
+    if (cleanJson.endsWith("```")) {
+      cleanJson = cleanJson.slice(0, -3);
+    }
+    cleanJson = cleanJson.trim();
+
+    const raw = JSON.parse(cleanJson);
+    const parsed = PackingListSchema.parse({
+      ...raw,
+      destination,
+      generatedAt: new Date().toISOString(),
+      categories: raw.categories.map((cat: any) => ({
+        ...cat,
+        items: cat.items.map((item: any) => ({
+          ...item,
+          id: item.id || `item_${Math.random().toString(36).substring(2, 9)}`,
+        })),
+      })),
+    });
+
+    return { packingList: parsed, usage };
   }
 
   /** Estimate cost in USD (approximate Gemini pricing as of 2025) */

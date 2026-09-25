@@ -40,7 +40,7 @@ const FEATURES = [
 
 export function LandingFeatureGrid() {
   return (
-    <section className="py-16 sm:py-24 relative bg-card/40 border-y border-border/60">
+    <section id="features" className="py-16 sm:py-24 relative bg-card/40 border-y border-border/60">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <SectionHeader
           title="Built for"

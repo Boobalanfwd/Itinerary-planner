@@ -3,7 +3,9 @@
 import * as React from "react"
 import { useState, useEffect } from "react"
 import Link from "next/link"
-import { Compass, Menu, X } from "lucide-react"
+import { useRouter } from "next/navigation"
+import { useSession } from "next-auth/react"
+import { Compass, Menu, X, ArrowRight, LayoutDashboard } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { ViewState } from "../types"
@@ -14,13 +16,25 @@ interface LandingNavProps {
   onExampleClick?: () => void
 }
 
+/**
+ * LandingNav — shown only on the public landing page (/).
+ *
+ * Auth-aware behaviour:
+ *   - LOGGED OUT  →  marketing links + "Sign In" + "Get Started" CTA
+ *   - LOGGED IN   →  same logo + "Go to Dashboard" CTA (page.tsx redirects
+ *                    anyway, so this state is transient)
+ */
 export function LandingNav({
   onViewChange,
   onExploreClick,
   onExampleClick,
 }: LandingNavProps) {
+  const { status } = useSession()
+  const router = useRouter()
   const [isScrolled, setIsScrolled] = useState(false)
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
+
+  const isAuthenticated = status === "authenticated"
 
   useEffect(() => {
     const handleScroll = () => {
@@ -29,6 +43,11 @@ export function LandingNav({
     window.addEventListener("scroll", handleScroll, { passive: true })
     return () => window.removeEventListener("scroll", handleScroll)
   }, [])
+
+  const scrollTo = (id: string) => {
+    setIsMobileMenuOpen(false)
+    document.getElementById(id)?.scrollIntoView({ behavior: "smooth" })
+  }
 
   return (
     <header
@@ -40,7 +59,7 @@ export function LandingNav({
       )}
     >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between">
-        {/* Left: Brand Logo in Small-Caps Serif */}
+        {/* ── Brand logo ─────────────────────────────────────────────────── */}
         <div
           onClick={() => {
             onViewChange?.("landing")
@@ -56,124 +75,144 @@ export function LandingNav({
           </span>
         </div>
 
-        {/* Center: Desktop Navigation Links (Destinations, Itineraries, Activities) */}
-        <nav className="hidden md:flex items-center gap-8 pl-12">
-          <a
-            href="#destinations"
-            onClick={(e) => {
-              e.preventDefault()
-              const el = document.getElementById("destinations")
-              el?.scrollIntoView({ behavior: "smooth" })
-            }}
-            className="text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors"
-          >
-            Destinations
-          </a>
-          <a
-            href="#itineraries"
-            onClick={(e) => {
-              e.preventDefault()
-              const el = document.getElementById("example-itinerary")
-              el?.scrollIntoView({ behavior: "smooth" })
-              onExampleClick?.()
-            }}
-            className="text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors"
-          >
-            Itineraries
-          </a>
-          <Link
-            href="/marketplace"
-            className="text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors"
-          >
-            Activities
-          </Link>
-          <a
-            href="#how-it-works"
-            onClick={(e) => {
-              e.preventDefault()
-              const el = document.getElementById("how-it-works")
-              el?.scrollIntoView({ behavior: "smooth" })
-            }}
-            className="text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors"
-          >
-            How It Works
-          </a>
-          <a
-            href="#faq"
-            onClick={(e) => {
-              e.preventDefault()
-              const el = document.getElementById("faq")
-              el?.scrollIntoView({ behavior: "smooth" })
-            }}
-            className="text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors"
-          >
-            FAQ
-          </a>
-        </nav>
+        {/* ── Desktop: marketing nav links (logged-out only) ─────────────── */}
+        {!isAuthenticated && (
+          <nav className="hidden md:flex items-center gap-7 pl-10" aria-label="Main navigation">
+            <button
+              onClick={() => scrollTo("how-it-works")}
+              className="text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+            >
+              How It Works
+            </button>
+            <button
+              onClick={() => scrollTo("features")}
+              className="text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+            >
+              Features
+            </button>
+            <button
+              onClick={() => {
+                scrollTo("example-itinerary")
+                onExampleClick?.()
+              }}
+              className="text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+            >
+              Sample Trips
+            </button>
+            <button
+              onClick={() => scrollTo("faq")}
+              className="text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+            >
+              FAQ
+            </button>
+          </nav>
+        )}
 
-        {/* Right side spacer to avoid overlapping the orange CornerTab */}
-        <div className="flex items-center gap-3 pr-28 sm:pr-36">
+        {/* ── Right-side actions ─────────────────────────────────────────── */}
+        <div className="flex items-center gap-2.5">
           <ThemeToggle />
+
+          {isAuthenticated ? (
+            /* Logged-in transient state: take them to dashboard */
+            <Link
+              href="/dashboard"
+              className="hidden md:inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary text-primary-foreground text-xs font-semibold shadow-sm hover:bg-primary/90 transition-colors"
+            >
+              <LayoutDashboard className="size-3.5" />
+              Dashboard
+            </Link>
+          ) : (
+            <>
+              {/* Sign In link */}
+              <Link
+                href="/auth/signin"
+                className="hidden md:inline-flex items-center px-3.5 py-2 rounded-xl text-sm font-semibold text-foreground hover:bg-muted/70 transition-colors"
+              >
+                Sign In
+              </Link>
+
+              {/* Get Started CTA */}
+              <Link
+                href="/auth/register"
+                className="hidden md:inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary text-primary-foreground text-xs font-semibold shadow-sm hover:bg-primary/90 transition-colors"
+              >
+                Get Started
+                <ArrowRight className="size-3.5" />
+              </Link>
+            </>
+          )}
+
+          {/* Mobile hamburger */}
           <button
             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
             className="md:hidden p-2 rounded-xl text-foreground hover:bg-muted transition-colors"
             aria-label="Toggle Navigation Menu"
+            aria-expanded={isMobileMenuOpen}
           >
             {isMobileMenuOpen ? <X className="size-5" /> : <Menu className="size-5" />}
           </button>
         </div>
       </div>
 
-      {/* Mobile Menu Dropdown */}
+      {/* ── Mobile dropdown menu ────────────────────────────────────────── */}
       {isMobileMenuOpen && (
         <div className="md:hidden bg-card/95 backdrop-blur-xl border-b border-border/80 px-6 py-5 shadow-soft-lg animate-in slide-in-from-top-3 flex flex-col gap-4">
-          <a
-            href="#destinations"
-            onClick={() => {
-              setIsMobileMenuOpen(false)
-              document.getElementById("destinations")?.scrollIntoView({ behavior: "smooth" })
-            }}
-            className="text-base font-semibold text-foreground py-1"
-          >
-            Destinations
-          </a>
-          <a
-            href="#example-itinerary"
-            onClick={() => {
-              setIsMobileMenuOpen(false)
-              document.getElementById("example-itinerary")?.scrollIntoView({ behavior: "smooth" })
-            }}
-            className="text-base font-semibold text-foreground py-1"
-          >
-            Itineraries
-          </a>
-          <Link
-            href="/marketplace"
-            onClick={() => setIsMobileMenuOpen(false)}
-            className="text-base font-semibold text-foreground py-1"
-          >
-            Activities & Explore
-          </Link>
-          <a
-            href="#how-it-works"
-            onClick={() => {
-              setIsMobileMenuOpen(false)
-              document.getElementById("how-it-works")?.scrollIntoView({ behavior: "smooth" })
-            }}
-            className="text-base font-semibold text-foreground py-1"
-          >
-            How It Works
-          </a>
-          <a
-            href="#faq"
-            onClick={() => {
-              setIsMobileMenuOpen(false)
-              document.getElementById("faq")?.scrollIntoView({ behavior: "smooth" })
-            }}
-            className="text-base font-semibold text-foreground py-1"
-          >
-            FAQ
-          </a>
+          {!isAuthenticated ? (
+            <>
+              <button
+                onClick={() => scrollTo("how-it-works")}
+                className="text-base font-semibold text-foreground py-1 text-left cursor-pointer"
+              >
+                How It Works
+              </button>
+              <button
+                onClick={() => scrollTo("features")}
+                className="text-base font-semibold text-foreground py-1 text-left cursor-pointer"
+              >
+                Features
+              </button>
+              <button
+                onClick={() => {
+                  scrollTo("example-itinerary")
+                  onExampleClick?.()
+                }}
+                className="text-base font-semibold text-foreground py-1 text-left cursor-pointer"
+              >
+                Sample Trips
+              </button>
+              <button
+                onClick={() => scrollTo("faq")}
+                className="text-base font-semibold text-foreground py-1 text-left cursor-pointer"
+              >
+                FAQ
+              </button>
+              <div className="pt-2 border-t border-border/60 flex flex-col gap-2">
+                <Link
+                  href="/auth/signin"
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className="w-full text-center px-4 py-2.5 rounded-xl border border-border text-sm font-semibold text-foreground hover:bg-muted transition-colors"
+                >
+                  Sign In
+                </Link>
+                <Link
+                  href="/auth/register"
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className="w-full text-center px-4 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors"
+                >
+                  Get Started Free
+                </Link>
+              </div>
+            </>
+          ) : (
+            <Link
+              href="/dashboard"
+              onClick={() => setIsMobileMenuOpen(false)}
+              className="flex items-center gap-2 text-base font-semibold text-foreground py-1"
+            >
+              <LayoutDashboard className="size-4 text-primary" />
+              Go to Dashboard
+            </Link>
+          )}
         </div>
       )}
     </header>

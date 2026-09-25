@@ -16,6 +16,11 @@ import {
   LogOut,
   Globe,
   PanelLeftClose,
+  CreditCard,
+  User,
+  Calendar,
+  Receipt,
+  MessageCircle,
 } from "lucide-react"
 import * as Flags from "country-flag-icons/react/3x2"
 import {
@@ -38,6 +43,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { ItineraryData } from "@/app/components/types"
 import { getCountryCode } from "@/lib/country-code"
 import { cn } from "@/lib/utils"
+import { useSubscription } from "@/app/hooks/useSubscription"
 
 interface AppSidebarProps {
   initialTrips?: ItineraryData[]
@@ -46,6 +52,7 @@ interface AppSidebarProps {
 export function AppSidebar({ initialTrips = [] }: AppSidebarProps) {
   const pathname = usePathname()
   const { data: session } = useSession()
+  const { tier } = useSubscription()
   const { state, toggleSidebar } = useSidebar()
   const isCollapsed = state === "collapsed"
 
@@ -154,11 +161,18 @@ export function AppSidebar({ initialTrips = [] }: AppSidebarProps) {
                 </Avatar>
 
                 <div className="flex flex-col min-w-0">
-                  <span className="text-sm font-bold text-sidebar-foreground truncate">
-                    {session?.user?.name || "Traveler"}
-                  </span>
+                  <div className="flex items-center gap-1.5 overflow-hidden">
+                    <span className="text-sm font-bold text-sidebar-foreground truncate">
+                      {session?.user?.name || "Traveler"}
+                    </span>
+                    {tier && tier !== "FREE" && (
+                      <span className="text-[9px] font-extrabold px-1.5 py-0.2 rounded-full bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-2xs shrink-0">
+                        {tier}
+                      </span>
+                    )}
+                  </div>
                   <span className="text-xs text-muted-foreground truncate">
-                    {session?.user?.email || "Pro Traveler"}
+                    {tier && tier !== "FREE" ? `${tier} Traveler` : session?.user?.email || "Pro Traveler"}
                   </span>
                 </div>
               </div>
@@ -300,7 +314,7 @@ export function AppSidebar({ initialTrips = [] }: AppSidebarProps) {
                 <SidebarMenuButton
                   asChild
                   isActive={pathname === "/dashboard/itineraries"}
-                  tooltip="Itineraries"
+                  tooltip="My Itineraries"
                   className={cn(
                     "rounded-xl text-sm font-medium transition-colors",
                     isCollapsed ? "size-9 p-0 justify-center mx-auto" : "px-3 py-2",
@@ -317,7 +331,31 @@ export function AppSidebar({ initialTrips = [] }: AppSidebarProps) {
                     )}
                   >
                     <Map className="size-4 text-primary shrink-0" />
-                    {!isCollapsed && <span>Itineraries</span>}
+                    {!isCollapsed && <span>My Itineraries</span>}
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+
+              <SidebarMenuItem className={cn(isCollapsed && "flex justify-center")}>
+                <SidebarMenuButton
+                  asChild
+                  isActive={pathname === "/dashboard/itineraries?filter=upcoming"}
+                  tooltip="Upcoming Trips"
+                  className={cn(
+                    "rounded-xl text-sm font-medium transition-colors",
+                    isCollapsed ? "size-9 p-0 justify-center mx-auto" : "px-3 py-2",
+                    "text-sidebar-foreground/80 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground"
+                  )}
+                >
+                  <Link
+                    href="/dashboard/itineraries?filter=upcoming"
+                    className={cn(
+                      "flex items-center",
+                      isCollapsed ? "justify-center w-full" : "gap-2.5"
+                    )}
+                  >
+                    <Calendar className="size-4 text-amber-500 shrink-0" />
+                    {!isCollapsed && <span>Upcoming Trips</span>}
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
@@ -329,7 +367,7 @@ export function AppSidebar({ initialTrips = [] }: AppSidebarProps) {
         <SidebarGroup className="p-0">
           {!isCollapsed && (
             <SidebarGroupLabel className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground px-3 mb-1">
-              DISCOVER
+              WORLD OF TRAVELLERS
             </SidebarGroupLabel>
           )}
           <SidebarGroupContent>
@@ -337,28 +375,59 @@ export function AppSidebar({ initialTrips = [] }: AppSidebarProps) {
               <SidebarMenuItem className={cn(isCollapsed && "flex justify-center")}>
                 <SidebarMenuButton
                   asChild
-                  isActive={pathname === "/marketplace"}
-                  tooltip="Explore Marketplace"
+                  isActive={pathname?.startsWith("/dashboard/marketplace")}
+                  tooltip="Community Itineraries"
                   className={cn(
-                    "rounded-xl text-sm font-medium transition-colors justify-between",
+                    "rounded-xl text-sm font-medium transition-colors",
                     isCollapsed ? "size-9 p-0 justify-center mx-auto" : "px-3 py-2",
-                    pathname === "/marketplace"
+                    pathname?.startsWith("/dashboard/marketplace")
                       ? "bg-sidebar-accent text-sidebar-foreground font-bold shadow-soft-xs"
                       : "text-sidebar-foreground/80 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground"
                   )}
                 >
                   <Link
-                    href="/marketplace"
+                    href="/dashboard/marketplace"
+                    className={cn(
+                      "flex items-center",
+                      isCollapsed ? "justify-center w-full" : "gap-2.5"
+                    )}
+                  >
+                    <Compass className="size-4 text-accent shrink-0" />
+                    {!isCollapsed && <span>Community Itineraries</span>}
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+
+              <SidebarMenuItem className={cn(isCollapsed && "flex justify-center")}>
+                <SidebarMenuButton
+                  asChild
+                  isActive={pathname?.startsWith("/dashboard/chat")}
+                  tooltip="Chat Room"
+                  className={cn(
+                    "rounded-xl text-sm font-medium transition-colors justify-between",
+                    isCollapsed ? "size-9 p-0 justify-center mx-auto" : "px-3 py-2",
+                    pathname?.startsWith("/dashboard/chat")
+                      ? "bg-sidebar-accent text-sidebar-foreground font-bold shadow-soft-xs"
+                      : "text-sidebar-foreground/80 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground"
+                  )}
+                >
+                  <Link
+                    href="/dashboard/chat"
                     className={cn(
                       "flex items-center justify-between w-full",
                       isCollapsed && "justify-center"
                     )}
                   >
                     <div className="flex items-center gap-2.5">
-                      <Compass className="size-4 text-accent shrink-0" />
-                      {!isCollapsed && <span>Explore</span>}
+                      <MessageCircle className="size-4 text-emerald-500 shrink-0" />
+                      {!isCollapsed && <span>Chat Room</span>}
                     </div>
-                    {!isCollapsed && <Badge variant="new">NEW!</Badge>}
+                    {!isCollapsed && (
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 flex items-center gap-1">
+                        <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                        Live
+                      </span>
+                    )}
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
@@ -385,6 +454,96 @@ export function AppSidebar({ initialTrips = [] }: AppSidebarProps) {
                   >
                     <Heart className="size-4 text-red-500 shrink-0" />
                     {!isCollapsed && <span>Favorites</span>}
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        {/* ACCOUNT Section */}
+        <SidebarGroup className="p-0">
+          {!isCollapsed && (
+            <SidebarGroupLabel className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground px-3 mb-1">
+              ACCOUNT & BILLING
+            </SidebarGroupLabel>
+          )}
+          <SidebarGroupContent>
+            <SidebarMenu>
+              <SidebarMenuItem className={cn(isCollapsed && "flex justify-center")}>
+                <SidebarMenuButton
+                  asChild
+                  isActive={pathname === "/dashboard/pricing"}
+                  tooltip="Pricing & Plans"
+                  className={cn(
+                    "rounded-xl text-sm font-medium transition-colors",
+                    isCollapsed ? "size-9 p-0 justify-center mx-auto" : "px-3 py-2",
+                    pathname === "/dashboard/pricing"
+                      ? "bg-sidebar-accent text-sidebar-foreground font-bold shadow-soft-xs"
+                      : "text-sidebar-foreground/80 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground"
+                  )}
+                >
+                  <Link
+                    href="/dashboard/pricing"
+                    className={cn(
+                      "flex items-center",
+                      isCollapsed ? "justify-center w-full" : "gap-2.5"
+                    )}
+                  >
+                    <CreditCard className="size-4 text-emerald-500 shrink-0" />
+                    {!isCollapsed && <span>Pricing & Plans</span>}
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+
+              <SidebarMenuItem className={cn(isCollapsed && "flex justify-center")}>
+                <SidebarMenuButton
+                  asChild
+                  isActive={pathname === "/dashboard/billing"}
+                  tooltip="Billing"
+                  className={cn(
+                    "rounded-xl text-sm font-medium transition-colors",
+                    isCollapsed ? "size-9 p-0 justify-center mx-auto" : "px-3 py-2",
+                    pathname === "/dashboard/billing"
+                      ? "bg-sidebar-accent text-sidebar-foreground font-bold shadow-soft-xs"
+                      : "text-sidebar-foreground/80 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground"
+                  )}
+                >
+                  <Link
+                    href="/dashboard/billing"
+                    className={cn(
+                      "flex items-center",
+                      isCollapsed ? "justify-center w-full" : "gap-2.5"
+                    )}
+                  >
+                    <Receipt className="size-4 text-blue-500 shrink-0" />
+                    {!isCollapsed && <span>Billing</span>}
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+
+              <SidebarMenuItem className={cn(isCollapsed && "flex justify-center")}>
+                <SidebarMenuButton
+                  asChild
+                  isActive={pathname === "/dashboard/profile"}
+                  tooltip="Profile"
+                  className={cn(
+                    "rounded-xl text-sm font-medium transition-colors",
+                    isCollapsed ? "size-9 p-0 justify-center mx-auto" : "px-3 py-2",
+                    pathname === "/dashboard/profile"
+                      ? "bg-sidebar-accent text-sidebar-foreground font-bold shadow-soft-xs"
+                      : "text-sidebar-foreground/80 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground"
+                  )}
+                >
+                  <Link
+                    href="/dashboard/profile"
+                    className={cn(
+                      "flex items-center",
+                      isCollapsed ? "justify-center w-full" : "gap-2.5"
+                    )}
+                  >
+                    <User className="size-4 text-primary shrink-0" />
+                    {!isCollapsed && <span>Profile</span>}
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>

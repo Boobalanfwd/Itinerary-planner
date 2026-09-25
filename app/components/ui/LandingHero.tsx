@@ -249,6 +249,7 @@ export function LandingHero({
       <AuthPromptDialog
         isOpen={showAuthDialog}
         onClose={() => setShowAuthDialog(false)}
+        prompt={inputValue}
       />
     </section>
   )

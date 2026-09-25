@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { UserProfileDropdown } from "./UserProfileDropdown";
 import { useSubscription } from "@/app/hooks/useSubscription";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { NotificationInviteInbox } from "@/components/collaboration/NotificationInviteInbox";
 import Link from "next/link";
 
 /**
@@ -69,18 +70,6 @@ export function Navbar({ onViewChange }: NavbarProps) {
             </Link>
           )}
           <Link
-            href="/hotels"
-            className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
-          >
-            Hotels
-          </Link>
-          <Link
-            href="/flights"
-            className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
-          >
-            Flights
-          </Link>
-          <Link
             href="/marketplace"
             className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
           >
@@ -92,6 +81,9 @@ export function Navbar({ onViewChange }: NavbarProps) {
           >
             Pricing
           </Link>
+
+          {/* Notifications and Trip Invites Inbox */}
+          <NotificationInviteInbox currentUserId={session?.user?.id} />
 
           {/* Theme toggle */}
           <ThemeToggle />
@@ -110,8 +102,9 @@ export function Navbar({ onViewChange }: NavbarProps) {
           )}
         </div>
 
-        {/* Mobile: theme toggle + hamburger */}
-        <div className="flex md:hidden items-center gap-2">
+        {/* Mobile: notifications + theme toggle + hamburger */}
+        <div className="flex md:hidden items-center gap-1">
+          <NotificationInviteInbox currentUserId={session?.user?.id} />
           <ThemeToggle />
           <button
             className="text-foreground p-2 rounded-xl hover:bg-muted transition-colors"
@@ -135,20 +128,6 @@ export function Navbar({ onViewChange }: NavbarProps) {
               Dashboard
             </Link>
           )}
-          <Link
-            href="/hotels"
-            className="text-base font-medium text-foreground/80 hover:text-foreground"
-            onClick={() => setIsMobileMenuOpen(false)}
-          >
-            Hotels
-          </Link>
-          <Link
-            href="/flights"
-            className="text-base font-medium text-foreground/80 hover:text-foreground"
-            onClick={() => setIsMobileMenuOpen(false)}
-          >
-            Flights
-          </Link>
           <Link
             href="/marketplace"
             className="text-base font-medium text-foreground/80 hover:text-foreground"

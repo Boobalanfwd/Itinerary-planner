@@ -51,11 +51,17 @@ export function FloatingDock({ onPlanTripClick }: FloatingDockProps) {
           </button>
 
           {/* 2. Explore */}
-          <Link
-            href="/marketplace"
-            onClick={() => setActiveItem("explore")}
+          <a
+            href={isAuthenticated ? "/dashboard/marketplace" : "#example-itinerary"}
+            onClick={(e) => {
+              setActiveItem("explore")
+              if (!isAuthenticated) {
+                e.preventDefault()
+                document.getElementById("example-itinerary")?.scrollIntoView({ behavior: "smooth" })
+              }
+            }}
             className={cn(
-              "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all",
+              "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer",
               activeItem === "explore"
                 ? "bg-primary-soft text-primary-soft-foreground"
                 : "text-muted-foreground hover:text-foreground hover:bg-muted/70"
@@ -63,7 +69,7 @@ export function FloatingDock({ onPlanTripClick }: FloatingDockProps) {
           >
             <Compass className="size-4 shrink-0 text-accent" />
             <span>Explore</span>
-          </Link>
+          </a>
 
           {/* Center Action: Plan my trip (Pill highlight) */}
           <button
@@ -137,7 +143,7 @@ export function FloatingDock({ onPlanTripClick }: FloatingDockProps) {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
             <Link
-              href="/dashboard/create"
+              href={isAuthenticated ? "/dashboard/create" : "/auth/signin?callbackUrl=/dashboard/create"}
               onClick={() => setIsMenuOpen(false)}
               className="flex items-center justify-between p-4 rounded-2xl border border-border/80 bg-card hover:bg-muted transition-colors group"
             >
@@ -154,7 +160,7 @@ export function FloatingDock({ onPlanTripClick }: FloatingDockProps) {
             </Link>
 
             <Link
-              href="/marketplace"
+              href={isAuthenticated ? "/dashboard/marketplace" : "/auth/signin?callbackUrl=/dashboard/marketplace"}
               onClick={() => setIsMenuOpen(false)}
               className="flex items-center justify-between p-4 rounded-2xl border border-border/80 bg-card hover:bg-muted transition-colors group"
             >
@@ -171,7 +177,7 @@ export function FloatingDock({ onPlanTripClick }: FloatingDockProps) {
             </Link>
 
             <Link
-              href="/dashboard/itineraries"
+              href={isAuthenticated ? "/dashboard/itineraries" : "/auth/signin?callbackUrl=/dashboard/itineraries"}
               onClick={() => setIsMenuOpen(false)}
               className="flex items-center justify-between p-4 rounded-2xl border border-border/80 bg-card hover:bg-muted transition-colors group"
             >
@@ -188,7 +194,7 @@ export function FloatingDock({ onPlanTripClick }: FloatingDockProps) {
             </Link>
 
             <Link
-              href="/pricing"
+              href={isAuthenticated ? "/dashboard/pricing" : "/auth/signin?callbackUrl=/dashboard/pricing"}
               onClick={() => setIsMenuOpen(false)}
               className="flex items-center justify-between p-4 rounded-2xl border border-border/80 bg-card hover:bg-muted transition-colors group"
             >

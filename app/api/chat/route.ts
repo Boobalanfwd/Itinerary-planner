@@ -7,6 +7,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenAI } from "@google/genai";
+import * as Sentry from "@sentry/nextjs";
 import { env } from "@/lib/env";
 import { z } from "zod";
 
@@ -107,6 +108,8 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error("[chat] Error:", error);
+    // Report to Sentry — chat errors are normally swallowed to keep UI alive
+    Sentry.captureException(error, { tags: { route: "/api/chat" } });
 
     // Return a graceful error — don't break the chat UI
     return NextResponse.json(

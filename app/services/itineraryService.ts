@@ -71,23 +71,32 @@ export async function createItinerary(
       aiData.days.map(async (day) => {
         const activitiesData = await Promise.all(
           day.activities.map(async (activity, idx) => {
-            const place = await resolvePlace(
-              activity.place_name,
-              aiData.destination
-            );
+            let place = null;
+            try {
+              place = await resolvePlace(
+                activity.place_name,
+                aiData.destination
+              );
+            } catch (pErr) {
+              console.warn(
+                `[itineraryService] Place resolution non-blocking error for "${activity.place_name}":`,
+                pErr
+              );
+            }
+
             return {
               time: activity.start_time ?? "09:00",
               title: activity.place_name,
               description: activity.reason,
               type: mapAiCategoryToPrisma(activity.category),
-              locationName: activity.neighborhood,
-              duration: activity.duration_min,
-              cost: activity.est_cost_usd,
+              locationName: activity.neighborhood ?? null,
+              duration: activity.duration_min ?? null,
+              cost: activity.est_cost_usd ?? null,
               position: idx,
               locationLat: place?.lat ?? null,
               locationLng: place?.lng ?? null,
               address: place?.formattedAddress ?? null,
-              placeId: place?.placeId ?? null,
+              placeId: place?.dbId ?? null,
             };
           })
         );
@@ -95,7 +104,8 @@ export async function createItinerary(
         return {
           dayNumber: day.day_number,
           title: day.theme ?? `Day ${day.day_number}`,
-          date: new Date(),
+          theme: day.theme ?? null,
+          date: new Date(Date.now() + (day.day_number - 1) * 86400000),
           activities: {
             create: activitiesData,
           },
@@ -104,10 +114,15 @@ export async function createItinerary(
     );
 
     // Resolve city cover image link via LLM and Unsplash
-    const coverImageUrl = await resolveDestinationImage(
-      aiData.destination,
-      aiData.title
-    );
+    let coverImageUrl = "/images/destinations/tokyo.jpg";
+    try {
+      coverImageUrl = await resolveDestinationImage(
+        aiData.destination,
+        aiData.title
+      );
+    } catch (imgErr) {
+      console.warn("[itineraryService] Destination image resolution fallback:", imgErr);
+    }
 
     const itinerary = await prisma.itinerary.create({
       data: {
@@ -136,9 +151,11 @@ export async function createItinerary(
     });
 
     return transformPrismaToFrontend(itinerary);
-  } catch (error) {
+  } catch (error: any) {
     console.error("[itineraryService] createItinerary error:", error);
-    throw new Error("Failed to create itinerary");
+    throw error instanceof Error
+      ? error
+      : new Error(`Failed to create itinerary: ${error?.message || String(error)}`);
   }
 }
 
@@ -552,6 +569,7 @@ function transformPrismaToFrontend(
     shareToken: itinerary!.shareToken ?? undefined,
     createdAt: itinerary!.createdAt,
     updatedAt: itinerary!.updatedAt,
+    metadata: (itinerary as any).metadata ?? undefined,
     days: itinerary!.days.map((day) => ({
       id: day.id,
       day: day.dayNumber,

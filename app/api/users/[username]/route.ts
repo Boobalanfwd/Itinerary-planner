@@ -76,6 +76,9 @@ export async function GET(
       isPublic: user.profile?.isPublic ?? true,
       followerCount: user.followerCount,
       followingCount: user.followingCount,
+      subscriptionTier: user.subscriptionTier || "FREE",
+      role: user.role,
+      subscriptionStatus: user.subscriptionStatus || "active",
       createdAt: user.createdAt,
       itineraries: user.itineraries.map((itinerary) => ({
         id: itinerary.id,

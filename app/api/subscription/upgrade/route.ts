@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/lib/auth";
 import { getCheckoutUrl, getVariantId } from "@/app/lib/lemonsqueezy";
+import prisma from "@/lib/prisma";
 
 export async function POST(req: NextRequest) {
   try {
@@ -17,19 +18,29 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid tier" }, { status: 400 });
     }
 
-    // Check if Lemonsqueezy is configured
+    // If Lemonsqueezy is not configured or in development, upgrade user directly in database
     if (
       !process.env.LEMONSQUEEZY_API_KEY ||
       !process.env.LEMONSQUEEZY_STORE_ID
     ) {
-      return NextResponse.json(
-        {
-          error: "Payment system not configured yet. Please contact support.",
-          details:
-            "Lemonsqueezy API credentials are missing. Please set LEMONSQUEEZY_API_KEY and LEMONSQUEEZY_STORE_ID in your .env file.",
+      const newTier = tier.toUpperCase() as "PRO" | "PREMIUM";
+      await prisma.user.update({
+        where: { id: session.user.id },
+        data: {
+          subscriptionTier: newTier,
+          role: "PREMIUM",
+          subscriptionStatus: "active",
+          subscriptionStart: new Date(),
+          subscriptionEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
         },
-        { status: 503 }
-      );
+      });
+
+      return NextResponse.json({
+        success: true,
+        upgraded: true,
+        tier: newTier,
+        message: `Upgraded to ${newTier} plan!`,
+      });
     }
 
     // Get the appropriate variant ID

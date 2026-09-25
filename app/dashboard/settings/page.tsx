@@ -17,8 +17,13 @@ export default function SettingsPage() {
     darkMode: true,
   });
 
+  React.useEffect(() => {
+    if (status === "unauthenticated") {
+      router.push("/auth/signin?callbackUrl=/dashboard/settings");
+    }
+  }, [status, router]);
+
   if (status === "unauthenticated") {
-    router.push("/auth/signin");
     return null;
   }
 

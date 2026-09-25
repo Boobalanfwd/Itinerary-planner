@@ -11,8 +11,13 @@ export default function CreateItineraryPage() {
   const { status } = useSession();
   const router = useRouter();
 
+  React.useEffect(() => {
+    if (status === "unauthenticated") {
+      router.push("/auth/signin?callbackUrl=/dashboard/create");
+    }
+  }, [status, router]);
+
   if (status === "unauthenticated") {
-    router.push("/auth/signin?callbackUrl=/dashboard/create");
     return null;
   }
 
@@ -42,7 +47,16 @@ export default function CreateItineraryPage() {
         </div>
 
         {/* All-in-one trip generation workstation */}
-        <TripCreationForm />
+        <React.Suspense
+          fallback={
+            <div className="p-8 text-center text-muted-foreground text-sm flex items-center justify-center gap-2">
+              <Compass className="w-5 h-5 animate-spin text-primary" />
+              <span>Loading planner...</span>
+            </div>
+          }
+        >
+          <TripCreationForm />
+        </React.Suspense>
       </div>
     </div>
   );

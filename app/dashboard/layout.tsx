@@ -6,6 +6,7 @@ import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar"
 import { AppSidebar } from "@/components/dashboard/app-sidebar"
 import { AppTopbar } from "@/components/dashboard/app-topbar"
 import { CommandSearch } from "@/components/dashboard/command-search"
+import { OnboardingModal } from "@/components/shared/OnboardingModal"
 
 export default function DashboardLayout({
   children,
@@ -36,6 +37,9 @@ export default function DashboardLayout({
           open={isSearchOpen}
           onOpenChange={setIsSearchOpen}
         />
+
+        {/* First-Time User Onboarding Tour Modal */}
+        <OnboardingModal />
       </div>
     </SidebarProvider>
   )

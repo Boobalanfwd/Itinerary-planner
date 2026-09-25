@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useDebounce } from "@/hooks/useDebounce";
 import {
   Plane,
   Hotel,
@@ -140,37 +141,24 @@ function FlightsSection({ data }: { data: ItineraryData }) {
 
 function HotelsSection({ data }: { data: ItineraryData }) {
   const [query, setQuery] = useState("");
+  const debouncedQuery = useDebounce(query, 400);
   const [results, setResults] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // Default coordinate center (fallback to 0,0 if not available)
-  // Ideally, ItineraryData should have a center lat/lng from the destination
-  // For now, let's assume we can get it or fallback.
-  // We'll use a hardcoded fallback or better yet, geocode the destination on mount.
-
-  const handleSearch = async () => {
-    if (!query) return;
+  const handleSearch = async (targetQuery: string = query) => {
+    const q = targetQuery.trim();
+    if (!q) return;
     setLoading(true);
     try {
-      // First get lat/lng for destination if we don't have it (simplified for now, assume we search within the destination context)
-      // For accurate results, we need the destination coordinates.
-      // Let's assume we search "hotels in [destination]" if no specific query, or append destination.
-
-      const searchQuery = query.includes(data.destination)
-        ? query
-        : `${query} in ${data.destination}`;
-
-      // Use a default coordinate for now if data doesn't provide it, or better,
-      // rely on the API finding relevant places by query string mainly.
-      // Mapbox proximity is optional but recommended.
+      const searchQuery = q.includes(data.destination)
+        ? q
+        : `${q} in ${data.destination}`;
 
       const res = await fetch(
         `/api/places/search?query=${encodeURIComponent(
           searchQuery
         )}&lat=0&lng=0`
       );
-      // Note: passing 0,0 as proximity might bias results if API leans heavily on it.
-      // A better approach: Geocode destination first.
 
       if (res.ok) {
         const json = await res.json();
@@ -182,6 +170,12 @@ function HotelsSection({ data }: { data: ItineraryData }) {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (debouncedQuery.trim().length >= 2) {
+      handleSearch(debouncedQuery);
+    }
+  }, [debouncedQuery]);
 
   return (
     <div className="space-y-6">
@@ -236,17 +230,18 @@ function HotelsSection({ data }: { data: ItineraryData }) {
 
 function RestaurantsSection({ data }: { data: ItineraryData }) {
   const [query, setQuery] = useState("");
+  const debouncedQuery = useDebounce(query, 400);
   const [results, setResults] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
 
-  const handleSearch = async () => {
-    if (!query) return;
+  const handleSearch = async (targetQuery: string = query) => {
+    const q = targetQuery.trim();
+    if (!q) return;
     setLoading(true);
     try {
-      const searchQuery = query.includes(data.destination)
-        ? query
-        : `${query} in ${data.destination}`;
-      // Using generic lat/lng 0,0 proxy for now - enhancement would be real destination coords
+      const searchQuery = q.includes(data.destination)
+        ? q
+        : `${q} in ${data.destination}`;
       const res = await fetch(
         `/api/places/search?query=${encodeURIComponent(
           searchQuery
@@ -263,6 +258,12 @@ function RestaurantsSection({ data }: { data: ItineraryData }) {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (debouncedQuery.trim().length >= 2) {
+      handleSearch(debouncedQuery);
+    }
+  }, [debouncedQuery]);
 
   return (
     <div className="space-y-6">

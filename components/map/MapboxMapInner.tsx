@@ -1,9 +1,25 @@
 "use client";
 
 import React, { useEffect, useRef, useState, useMemo, useCallback } from "react";
+import dynamic from "next/dynamic";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { useTheme } from "next-themes";
+
+import { MapboxRasterMap } from "./MapboxRasterMap";
+
+export function isWebGLSupported(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    const canvas = document.createElement("canvas");
+    const gl = canvas.getContext("webgl2");
+    if (!gl) return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 import {
   MapPin,
   Clock,
@@ -60,7 +76,7 @@ export function getDayColor(dayNumber: number): string {
   return DAY_COLORS[(dayNumber - 1) % DAY_COLORS.length];
 }
 
-const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
+const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || "";
 
 // Global in-memory route cache across renders & component remounts
 const GLOBAL_ROAD_ROUTE_CACHE = new Map<string, [number, number][]>();
@@ -132,6 +148,8 @@ export function MapboxMapInner({
   const [resolvedActivities, setResolvedActivities] = useState<MapActivityLocation[]>(activities);
   const [isGeocoding, setIsGeocoding] = useState(false);
   const [dayRoutes, setDayRoutes] = useState<Record<number, [number, number][]>>({});
+  const [is3DMode, setIs3DMode] = useState(false);
+  const [useRasterMapbox, setUseRasterMapbox] = useState(() => !isWebGLSupported());
 
   // Enrich missing coordinates via Mapbox Geocoding only if necessary
   useEffect(() => {
@@ -633,34 +651,43 @@ export function MapboxMapInner({
           ? activity.position + 1
           : (dayIdx >= 0 ? dayIdx : idx) + 1;
 
+      const pinWidth = isHighlighted ? 38 : 32;
+      const pinHeight = isHighlighted ? 48 : 42;
       const el = document.createElement("div");
       el.className = "custom-mapbox-marker group cursor-pointer";
-      el.style.width = isHighlighted ? "40px" : "32px";
-      el.style.height = isHighlighted ? "40px" : "32px";
+      el.style.width = `${pinWidth}px`;
+      el.style.height = `${pinHeight}px`;
       el.style.transition = "all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1)";
       el.style.zIndex = isHighlighted ? "30" : "10";
+      el.style.filter = isHighlighted
+        ? "drop-shadow(0 6px 14px rgba(0,0,0,0.45))"
+        : "drop-shadow(0 3px 8px rgba(0,0,0,0.35))";
 
       el.innerHTML = `
-        <div style="
-          width: 100%;
-          height: 100%;
-          background: ${dayColor};
-          color: white;
-          border-radius: 50% 50% 50% 4px;
-          transform: rotate(-45deg);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          box-shadow: 0 4px 16px rgba(0,0,0,0.35);
-          border: 2.5px solid white;
-        ">
-          <span style="
-            transform: rotate(45deg);
-            font-weight: 800;
-            font-size: ${isHighlighted ? 13 : 11}px;
-            font-family: system-ui, -apple-system, sans-serif;
-          ">${sequenceNum}</span>
-        </div>
+        <svg
+          width="${pinWidth}"
+          height="${pinHeight}"
+          viewBox="0 0 32 42"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <path
+            d="M16 0C7.163 0 0 7.163 0 16c0 10.5 13.5 24.2 15.2 25.8.4.4 1.2.4 1.6 0C18.5 40.2 32 26.5 32 16 32 7.163 24.837 0 16 0z"
+            fill="${dayColor}"
+            stroke="#ffffff"
+            stroke-width="${isHighlighted ? 2.5 : 2}"
+          />
+          <text
+            x="16"
+            y="18.5"
+            text-anchor="middle"
+            dominant-baseline="middle"
+            fill="#ffffff"
+            font-weight="800"
+            font-size="${isHighlighted ? 13 : 11.5}"
+            font-family="system-ui, -apple-system, sans-serif"
+          >${sequenceNum}</text>
+        </svg>
       `;
 
       const popupHtml = `
@@ -751,6 +778,11 @@ export function MapboxMapInner({
 
   // Initialize Mapbox map instance
   useEffect(() => {
+    if (!isWebGLSupported()) {
+      setUseRasterMapbox(true);
+      return;
+    }
+
     if (!mapContainerRef.current) return;
 
     mapboxgl.accessToken = MAPBOX_TOKEN;
@@ -763,12 +795,35 @@ export function MapboxMapInner({
       ? [staticDest.lng, staticDest.lat]
       : [139.6917, 35.6895]; // Default fallback
 
-    const map = new mapboxgl.Map({
-      container: mapContainerRef.current,
-      style: mapStyle,
-      center: initialCenter,
-      zoom: 12,
-      attributionControl: true,
+    let map: mapboxgl.Map | null = null;
+    try {
+      map = new mapboxgl.Map({
+        container: mapContainerRef.current,
+        style: mapStyle,
+        center: initialCenter,
+        zoom: 12,
+        pitch: is3DMode ? 55 : 0,
+        attributionControl: true,
+      });
+    } catch (err) {
+      console.warn("[MapboxMap] WebGL failed, switching to Mapbox raster view:", err);
+      setUseRasterMapbox(true);
+      return;
+    }
+
+    map.on("webglcontextlost", (e) => {
+      e.originalEvent?.preventDefault();
+      console.warn("[MapboxMap] WebGL context lost event:", e);
+    });
+
+    map.on("webglcontextrestored", () => {
+      syncRouteLayersRef.current();
+      updateMarkersRef.current();
+      map?.resize();
+    });
+
+    map.on("error", (e) => {
+      console.warn("[MapboxMap] Mapbox GL event error:", e);
     });
 
     map.addControl(
@@ -782,12 +837,19 @@ export function MapboxMapInner({
     map.on("load", () => {
       syncRouteLayersRef.current();
       updateMarkersRef.current();
+      map?.resize();
     });
 
     mapRef.current = map;
 
     return () => {
-      map.remove();
+      if (map) {
+        try {
+          map.remove();
+        } catch (e) {
+          console.warn("[MapboxMap] Error during map.remove():", e);
+        }
+      }
       mapRef.current = null;
     };
   }, []);
@@ -830,6 +892,33 @@ export function MapboxMapInner({
     }
   }, [highlightActivityId, validActivities]);
 
+  const toggle3DMode = () => {
+    const next3D = !is3DMode;
+    setIs3DMode(next3D);
+    if (mapRef.current) {
+      mapRef.current.easeTo({
+        pitch: next3D ? 55 : 0,
+        bearing: next3D ? -20 : 0,
+        duration: 800,
+      });
+    }
+  };
+
+  if (useRasterMapbox) {
+    return (
+      <MapboxRasterMap
+        destination={destination}
+        activities={activities}
+        days={days}
+        selectedDay={activeDay}
+        onSelectDay={handleSelectDay}
+        onBack={onBack}
+        highlightActivityId={highlightActivityId}
+        className={className}
+      />
+    );
+  }
+
   return (
     <div
       className={`relative w-full h-full min-h-[500px] flex flex-col bg-background overflow-hidden ${className}`}
@@ -858,6 +947,13 @@ export function MapboxMapInner({
             >
               {isGeocoding ? "Locating..." : `${displayedActivities.length} Stops`}
             </Badge>
+            <button
+              type="button"
+              onClick={toggle3DMode}
+              className="text-[10px] px-2 py-0.5 rounded-md font-bold transition-all bg-muted hover:bg-muted/80 text-foreground cursor-pointer border border-border/60"
+            >
+              {is3DMode ? "3D Mode" : "2D Mode"}
+            </button>
           </div>
         </div>
 

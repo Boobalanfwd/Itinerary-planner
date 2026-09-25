@@ -4,8 +4,7 @@ import * as React from "react"
 import { useMemo } from "react"
 import Link from "next/link"
 import { useSession, signOut } from "next-auth/react"
-import { Search, User, Settings, LayoutDashboard, Compass, LogOut } from "lucide-react"
-import { SidebarTrigger } from "@/components/ui/sidebar"
+import { Search, User, Settings, LayoutDashboard, Compass, LogOut, CreditCard } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { NotificationsPopover } from "@/components/dashboard/notifications-popover"
@@ -46,10 +45,8 @@ export function AppTopbar({ onSearchClick }: AppTopbarProps) {
 
   return (
     <header className="sticky top-0 z-30 flex items-center justify-between gap-4 px-4 sm:px-8 py-3.5 border-b border-border/80 bg-background/80 backdrop-blur-xl transition-colors select-none">
-      {/* Left: Mobile Trigger + Time-based Greeting */}
+      {/* Left: Time-based Greeting */}
       <div className="flex items-center gap-3">
-        <SidebarTrigger className="p-2 rounded-xl text-foreground hover:bg-muted" />
-
         <div className="flex flex-col">
           <h1 className="text-lg sm:text-xl font-extrabold tracking-tight text-foreground leading-tight flex items-center gap-1.5">
             <span>{greeting}, {firstName}!</span>
@@ -119,6 +116,18 @@ export function AppTopbar({ onSearchClick }: AppTopbarProps) {
               <Link href="/dashboard/itineraries" className="flex items-center gap-2 cursor-pointer rounded-xl py-2">
                 <Compass className="size-4 text-accent" />
                 <span>My Itineraries</span>
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link href="/dashboard/profile" className="flex items-center gap-2 cursor-pointer rounded-xl py-2">
+                <User className="size-4 text-primary" />
+                <span>Profile</span>
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link href="/dashboard/pricing" className="flex items-center gap-2 cursor-pointer rounded-xl py-2">
+                <CreditCard className="size-4 text-emerald-500" />
+                <span>Pricing & Plans</span>
               </Link>
             </DropdownMenuItem>
             <DropdownMenuItem asChild>

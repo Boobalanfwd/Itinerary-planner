@@ -42,6 +42,17 @@ const envSchema = z.object({
   NODE_ENV: z
     .enum(["development", "test", "production"])
     .default("development"),
+
+  // ── Sentry (optional — app works without it, but errors are invisible) ──
+  SENTRY_DSN: z.string().url().optional(),
+  NEXT_PUBLIC_SENTRY_DSN: z.string().url().optional(),
+  SENTRY_AUTH_TOKEN: z.string().optional(), // Required for source map uploads at build time
+  SENTRY_ORG: z.string().optional(),        // Your Sentry organisation slug
+  SENTRY_PROJECT: z.string().optional(),    // Your Sentry project slug
+
+  // ── Upstash Redis (Edge Rate Limiting) ──────────────────────────
+  UPSTASH_REDIS_REST_URL: z.string().url().optional(),
+  UPSTASH_REDIS_REST_TOKEN: z.string().optional(),
 });
 
 /**

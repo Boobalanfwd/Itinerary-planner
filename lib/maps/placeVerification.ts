@@ -1,3 +1,4 @@
+import * as Sentry from "@sentry/nextjs";
 import { nominatimProvider } from "./nominatim";
 import { findPlaceByName, upsertPlace } from "@/lib/repositories/placeRepository";
 import { prisma } from "@/lib/prisma";
@@ -12,7 +13,21 @@ const MAPBOX_TOKEN =
   process.env.NEXT_PUBLIC_MAPBOX_TOKEN ||
   process.env.MAPBOX_TOKEN;
 
-export async function resolvePlace(query: string, nearLocation?: string) {
+export interface ResolvedPlaceResult {
+  dbId: string;
+  placeId: string;
+  name: string;
+  formattedAddress: string;
+  lat: number;
+  lng: number;
+  category?: string;
+  raw?: Record<string, any>;
+}
+
+export async function resolvePlace(
+  query: string,
+  nearLocation?: string
+): Promise<ResolvedPlaceResult | null> {
   // 1. Check local place cache, scoped to destination to avoid cross-country collisions
   const cached = await findPlaceByName(query, nearLocation ?? null);
   if (cached && cached.lat && cached.lng) {
@@ -183,6 +198,9 @@ export async function resolvePlace(query: string, nearLocation?: string) {
 }
 
 export async function verifyAndEnrichItinerary(itineraryId: string): Promise<void> {
+  return Sentry.startSpan(
+    { name: "verifyAndEnrichItinerary", op: "maps.geocode", attributes: { itineraryId } },
+    async () => {
   const itinerary = await prisma.itinerary.findUnique({
     where: { id: itineraryId },
     include: {
@@ -235,7 +253,7 @@ export async function verifyAndEnrichItinerary(itineraryId: string): Promise<voi
               locationLat: place.lat,
               locationLng: place.lng,
               address: place.formattedAddress,
-              placeId: (place as any).dbId || undefined,
+              placeId: place.dbId || undefined,
             },
           });
         }
@@ -256,7 +274,7 @@ export async function verifyAndEnrichItinerary(itineraryId: string): Promise<voi
 
         // Sanity check: only calculate travel time if stops are within 120 km
         if (straightDistKm <= 120) {
-          const mode = straightDist < 0.018 ? "walking" : "transit";
+          const mode = straightDistKm < 0.018 ? "walking" : "transit";
           const travel = await nominatimProvider.calculateDistanceAndTime(
             prevCoords,
             { lat: currentLat, lng: currentLng },
@@ -290,4 +308,5 @@ export async function verifyAndEnrichItinerary(itineraryId: string): Promise<voi
       }
     }
   }
+  }); // end Sentry.startSpan
 }

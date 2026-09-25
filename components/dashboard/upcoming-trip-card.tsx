@@ -3,7 +3,7 @@
 import * as React from "react"
 import Link from "next/link"
 import { format } from "date-fns"
-import { ArrowUpRight, Calendar, Sparkles } from "lucide-react"
+import { ArrowUpRight, Calendar, Sparkles, BookOpen } from "lucide-react"
 import * as Flags from "country-flag-icons/react/3x2"
 import { ItineraryData } from "@/app/components/types"
 import { getCountryCode } from "@/lib/country-code"
@@ -124,6 +124,18 @@ export function UpcomingTripCard({ trip }: UpcomingTripCardProps) {
               <div className="hidden sm:block">
                 <AvatarGroup avatars={sampleTravelers} max={2} size="sm" />
               </div>
+
+              <Button
+                asChild
+                variant="outline"
+                size="pill"
+                className="font-bold text-xs sm:text-sm h-10 px-4 border-white/20 bg-black/40 hover:bg-black/60 text-white backdrop-blur-md gap-1.5 shadow-sm"
+              >
+                <Link href={`/itinerary/${trip.id}?view=journal`}>
+                  <BookOpen className="size-3.5 text-amber-400" />
+                  <span>Journal</span>
+                </Link>
+              </Button>
 
               <Button
                 asChild

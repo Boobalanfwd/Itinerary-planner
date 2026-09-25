@@ -4,6 +4,8 @@ import CredentialsProvider from "next-auth/providers/credentials";
 import { PrismaAdapter } from "@next-auth/prisma-adapter";
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
+import { sendWelcomeEmail } from "./emailService";
+import { Prisma } from "@prisma/client";
 
 export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma),
@@ -95,15 +97,35 @@ export const authOptions: NextAuthOptions = {
       if (user) {
         token.role = user.role;
 
-        // For Google OAuth, mark email as verified and update last login
+        // For Google OAuth, mark email as verified, update last login, and trigger welcome email
         if (account?.provider === "google" && user.email) {
           try {
+            const dbUser = await prisma.user.findUnique({
+              where: { id: user.id },
+              select: { lastLoginAt: true, preferences: true, name: true },
+            });
+
+            const isFirstLogin = !dbUser?.lastLoginAt;
+            const currentPrefs = (dbUser?.preferences as Record<string, unknown>) || {};
+
+            if (isFirstLogin && !currentPrefs.welcomeEmailSent) {
+              sendWelcomeEmail({
+                to: user.email,
+                name: user.name || dbUser?.name || "Traveler",
+              }).catch((err) =>
+                console.warn("[Welcome Email] Non-blocking delivery error:", err)
+              );
+
+              currentPrefs.welcomeEmailSent = true;
+            }
+
             await prisma.user.update({
               where: { id: user.id },
               data: {
                 isEmailVerified: true,
                 emailVerified: new Date(),
                 lastLoginAt: new Date(),
+                preferences: currentPrefs as Prisma.InputJsonValue,
               },
             });
           } catch (error) {

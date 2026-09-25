@@ -15,6 +15,8 @@ import {
   ShoppingBag,
   Compass,
   Info,
+  MessageSquare,
+  Vote,
 } from "lucide-react";
 import { Activity } from "@/app/components/types";
 import { ActivityActionsMenu } from "./ActivityActionsMenu";
@@ -26,10 +28,15 @@ interface SortableActivityCardProps {
   dayColor?: string;
   isHighlighted?: boolean;
   readOnly?: boolean;
+  commentCount?: number;
+  activeEditor?: { userName: string; userColor?: string };
+  isLocked?: boolean;
+  linkedPoll?: any;
   onHover?: (id: string) => void;
   onLeave?: () => void;
   onEdit: (activity: Activity) => void;
   onDelete: (activityId: string) => Promise<void> | void;
+  onOpenComments?: (activity: Activity) => void;
 }
 
 const getActivityIcon = (type: string) => {
@@ -70,10 +77,15 @@ export function SortableActivityCard({
   dayColor = "#0D9488",
   isHighlighted = false,
   readOnly = false,
+  commentCount = 0,
+  activeEditor,
+  isLocked = false,
+  linkedPoll,
   onHover,
   onLeave,
   onEdit,
   onDelete,
+  onOpenComments,
 }: SortableActivityCardProps) {
   const cardId = activity.id || `act-${dayNumber}-${index}`;
 
@@ -117,7 +129,7 @@ export function SortableActivityCard({
           type="button"
           {...attributes}
           {...listeners}
-          className="mt-1.5 -ml-1 p-1 text-muted-foreground/40 hover:text-foreground cursor-grab active:cursor-grabbing rounded-md hover:bg-muted/60 transition-colors"
+          className="mt-0.5 -ml-1.5 p-2 min-h-[44px] min-w-[44px] flex items-center justify-center text-muted-foreground/40 hover:text-foreground cursor-grab active:cursor-grabbing rounded-xl hover:bg-muted/60 transition-colors"
           title="Drag to reorder stop"
           aria-label="Drag handle"
         >
@@ -166,17 +178,51 @@ export function SortableActivityCard({
                 ${activity.cost}
               </span>
             )}
+
+            {/* Active Editor Presence Badge */}
+            {activeEditor && (
+              <span
+                className="animate-pulse inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold text-white shadow-xs"
+                style={{ backgroundColor: activeEditor.userColor || "#F59E0B" }}
+              >
+                ✏️ {activeEditor.userName} editing
+              </span>
+            )}
+
+            {/* Linked Poll Indicator */}
+            {linkedPoll && (
+              <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30">
+                <Vote className="w-2.5 h-2.5" />
+                Poll Attached
+              </span>
+            )}
           </div>
 
-          {/* Action Menu */}
-          {!readOnly && (
-            <ActivityActionsMenu
-              activity={activity}
-              dayNumber={dayNumber}
-              onEdit={() => onEdit(activity)}
-              onDelete={onDelete}
-            />
-          )}
+          <div className="flex items-center gap-1">
+            {/* Comment Thread Trigger Button */}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onOpenComments?.(activity);
+              }}
+              title="Open discussion on this activity"
+              className="flex items-center gap-1 text-[11px] font-semibold text-muted-foreground hover:text-amber-600 transition-colors px-2 py-1 rounded-lg hover:bg-amber-500/10"
+            >
+              <MessageSquare className="w-3.5 h-3.5" />
+              <span>{commentCount > 0 ? commentCount : ""}</span>
+            </button>
+
+            {/* Action Menu */}
+            {!readOnly && (
+              <ActivityActionsMenu
+                activity={activity}
+                dayNumber={dayNumber}
+                onEdit={() => onEdit(activity)}
+                onDelete={onDelete}
+              />
+            )}
+          </div>
         </div>
 
         {/* Title */}

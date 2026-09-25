@@ -3,7 +3,8 @@
 import React, { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
-import { User, MapPin, Globe, Calendar, Edit, Camera, Sparkles, Check } from "lucide-react";
+import { User, MapPin, Globe, Calendar, Edit, Camera, Sparkles, Check, Crown } from "lucide-react";
+import Link from "next/link";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 
@@ -17,6 +18,7 @@ export default function ProfilePage() {
     location: "",
     website: "",
     travelStyle: [] as string[],
+    subscriptionTier: "FREE",
   });
 
   useEffect(() => {
@@ -37,6 +39,7 @@ export default function ProfilePage() {
           location: data.profile.location || "",
           website: data.profile.website || "",
           travelStyle: data.profile.travelStyle || [],
+          subscriptionTier: data.profile.subscriptionTier || "FREE",
         });
       }
     } catch (error) {
@@ -66,8 +69,13 @@ export default function ProfilePage() {
     }
   };
 
+  React.useEffect(() => {
+    if (status === "unauthenticated") {
+      router.push("/auth/signin?callbackUrl=/dashboard/profile");
+    }
+  }, [status, router]);
+
   if (status === "unauthenticated") {
-    router.push("/auth/signin");
     return null;
   }
 
@@ -137,12 +145,35 @@ export default function ProfilePage() {
         >
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
             <div>
-              <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">
-                {session?.user?.name || "Traveler"}
-              </h1>
-              <p className="text-sm text-muted-foreground font-mono mt-0.5">
-                @{session?.user?.email?.split("@")[0] || "user"}
-              </p>
+              <div className="flex flex-wrap items-center gap-2.5">
+                <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground font-serif">
+                  {session?.user?.name || "Traveler"}
+                </h1>
+                {profile.subscriptionTier && profile.subscriptionTier !== "FREE" ? (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full text-xs font-bold bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-soft">
+                    <Crown className="w-3.5 h-3.5" />
+                    {profile.subscriptionTier} TRAVELER
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-muted text-muted-foreground border border-border/80">
+                    Free Explorer
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-3 mt-1">
+                <p className="text-sm text-muted-foreground font-mono">
+                  @{session?.user?.email?.split("@")[0] || "user"}
+                </p>
+                {profile.subscriptionTier === "FREE" && (
+                  <Link
+                    href="/dashboard/pricing"
+                    className="text-xs font-bold text-primary hover:underline flex items-center gap-1"
+                  >
+                    <span>Upgrade to Pro</span>
+                    <Sparkles className="w-3 h-3 text-amber-500" />
+                  </Link>
+                )}
+              </div>
             </div>
             <Button
               variant={editing ? "outline" : "default"}

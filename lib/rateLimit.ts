@@ -2,7 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { SubscriptionTier } from "@prisma/client";
 
 const TIER_LIMITS: Record<SubscriptionTier, number> = {
-  FREE: 5,
+  FREE: 3,
   PRO: 50,
   PREMIUM: 99999,
 };

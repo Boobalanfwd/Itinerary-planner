@@ -1,8 +1,8 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, Suspense } from "react";
 import { useSession } from "next-auth/react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   Plus,
   Search,
@@ -17,6 +17,7 @@ import {
   Plane,
   X,
   Loader2,
+  BookOpen,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
@@ -36,30 +37,46 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { useDebounce } from "@/hooks/useDebounce";
 
 type SortOption = "newest" | "oldest" | "duration" | "budget";
-type FilterOption = "all" | "DRAFT" | "PUBLISHED";
+type FilterOption = "all" | "upcoming" | "DRAFT" | "PUBLISHED" | "journal";
 
 const FALLBACK_COVER =
   "https://images.unsplash.com/photo-1488646953014-85cb44e25828?w=800&auto=format&fit=crop&q=80";
 
-export default function MyItinerariesPage() {
+function MyItinerariesContent() {
   const { data: session, status } = useSession();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const urlFilter = searchParams.get("filter") as FilterOption | null;
 
   const [itineraries, setItineraries] = useState<ItineraryData[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<FilterOption>("all");
+  const debouncedSearchQuery = useDebounce(searchQuery, 300);
+  const [statusFilter, setStatusFilter] = useState<FilterOption>(
+    urlFilter && ["all", "upcoming", "DRAFT", "PUBLISHED", "journal"].includes(urlFilter)
+      ? urlFilter
+      : "all"
+  );
   const [sortBy, setSortBy] = useState<SortOption>("newest");
   const [deleteTarget, setDeleteTarget] = useState<ItineraryData | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
+    if (urlFilter && ["all", "upcoming", "DRAFT", "PUBLISHED", "journal"].includes(urlFilter)) {
+      setStatusFilter(urlFilter);
+    }
+  }, [urlFilter]);
+
+  useEffect(() => {
     if (status === "authenticated") {
       fetchItineraries();
+    } else if (status === "unauthenticated") {
+      router.push("/auth/signin?callbackUrl=/dashboard/itineraries");
     }
-  }, [status]);
+  }, [status, router]);
 
   const fetchItineraries = async () => {
     setLoading(true);
@@ -147,13 +164,16 @@ export default function MyItinerariesPage() {
     return itineraries
       .filter((item) => {
         // Status filter
-        if (statusFilter !== "all" && item.status !== statusFilter) {
-          return false;
+        if (statusFilter === "DRAFT" || statusFilter === "PUBLISHED") {
+          if (item.status !== statusFilter) return false;
+        } else if (statusFilter === "upcoming") {
+          const today = new Date().toISOString().split("T")[0];
+          if (item.startDate && item.startDate < today) return false;
         }
 
-        // Search query
-        if (searchQuery.trim()) {
-          const q = searchQuery.toLowerCase();
+        // Search query (debounced)
+        if (debouncedSearchQuery.trim()) {
+          const q = debouncedSearchQuery.toLowerCase();
           const matchDest = item.destination?.toLowerCase().includes(q);
           const matchTitle = item.title?.toLowerCase().includes(q);
           const matchTag = item.tags?.some((t) => t.toLowerCase().includes(q));
@@ -185,10 +205,9 @@ export default function MyItinerariesPage() {
         }
         return 0;
       });
-  }, [itineraries, statusFilter, searchQuery, sortBy]);
+  }, [itineraries, statusFilter, debouncedSearchQuery, sortBy]);
 
   if (status === "unauthenticated") {
-    router.push("/auth/signin");
     return null;
   }
 
@@ -210,7 +229,7 @@ export default function MyItinerariesPage() {
               My Itineraries
             </h1>
             <p className="text-sm text-muted-foreground mt-1">
-              View, organize, share, and manage all your generated travel plans.
+              View, organize, share, and manage all your generated travel plans and memory journals.
             </p>
           </div>
 
@@ -249,21 +268,23 @@ export default function MyItinerariesPage() {
           {/* Filters & Sort */}
           <div className="flex flex-wrap items-center gap-2">
             {/* Status Segmented Control */}
-            <div className="flex items-center p-1 rounded-xl bg-muted/50 border border-border/70 text-xs font-semibold">
+            <div className="flex items-center p-1 rounded-xl bg-muted/50 border border-border/70 text-xs font-semibold overflow-x-auto no-scrollbar">
               {(
                 [
                   { label: "All", value: "all" },
+                  { label: "Upcoming", value: "upcoming" },
                   { label: "Draft", value: "DRAFT" },
                   { label: "Published", value: "PUBLISHED" },
+                  { label: "📖 Journals", value: "journal" },
                 ] as const
               ).map((tab) => (
                 <button
                   key={tab.value}
                   type="button"
                   onClick={() => setStatusFilter(tab.value)}
-                  className={`px-3 py-1 rounded-lg transition-all ${
+                  className={`px-3 py-1 rounded-lg transition-all whitespace-nowrap cursor-pointer ${
                     statusFilter === tab.value
-                      ? "bg-card text-foreground shadow-sm font-bold"
+                      ? "bg-card text-foreground shadow-sm font-bold text-primary"
                       : "text-muted-foreground hover:text-foreground"
                   }`}
                 >
@@ -325,18 +346,18 @@ export default function MyItinerariesPage() {
             </div>
             <div className="max-w-md mx-auto space-y-1">
               <h3 className="text-xl font-bold text-foreground">
-                {searchQuery || statusFilter !== "all"
+                {debouncedSearchQuery || statusFilter !== "all"
                   ? "No matching itineraries found"
                   : "No itineraries created yet"}
               </h3>
               <p className="text-sm text-muted-foreground">
-                {searchQuery || statusFilter !== "all"
+                {debouncedSearchQuery || statusFilter !== "all"
                   ? "Try clearing your search query or changing filters to see more trips."
                   : "Start by generating your personalized AI itinerary with activities, maps, and budgeting."}
               </p>
             </div>
 
-            {searchQuery || statusFilter !== "all" ? (
+            {debouncedSearchQuery || statusFilter !== "all" ? (
               <Button
                 variant="outline"
                 onClick={() => {
@@ -510,7 +531,7 @@ export default function MyItinerariesPage() {
                           e.stopPropagation();
                           router.push(`/itinerary/${item.id}`);
                         }}
-                        className="rounded-full text-xs font-semibold gap-1.5 flex-1 shadow-sm"
+                        className="rounded-full text-xs font-semibold gap-1.5 flex-1 shadow-sm cursor-pointer"
                       >
                         <ExternalLink className="w-3.5 h-3.5" />
                         Open Trip
@@ -519,9 +540,23 @@ export default function MyItinerariesPage() {
                       <Button
                         size="sm"
                         variant="outline"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          router.push(`/itinerary/${item.id}?view=journal`);
+                        }}
+                        title="Open Memory Journal for this trip"
+                        className="rounded-full text-xs font-semibold gap-1.5 border-amber-500/30 text-amber-600 hover:text-amber-500 hover:bg-amber-500/10 dark:text-amber-400 cursor-pointer"
+                      >
+                        <BookOpen className="w-3.5 h-3.5 text-amber-500" />
+                        <span>Journal</span>
+                      </Button>
+
+                      <Button
+                        size="sm"
+                        variant="outline"
                         onClick={(e) => handleShare(e, item)}
                         title="Copy public share link"
-                        className="rounded-full text-xs font-semibold px-3 border-border/70 hover:border-primary/40 text-muted-foreground hover:text-foreground"
+                        className="rounded-full text-xs font-semibold px-3 border-border/70 hover:border-primary/40 text-muted-foreground hover:text-foreground cursor-pointer"
                       >
                         <Share2 className="w-3.5 h-3.5" />
                       </Button>
@@ -534,7 +569,7 @@ export default function MyItinerariesPage() {
                           setDeleteTarget(item);
                         }}
                         title="Delete itinerary"
-                        className="rounded-full text-xs font-semibold px-3 border-border/70 hover:border-destructive/60 hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
+                        className="rounded-full text-xs font-semibold px-3 border-border/70 hover:border-destructive/60 hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors cursor-pointer"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </Button>
@@ -575,14 +610,14 @@ export default function MyItinerariesPage() {
             <AlertDialogCancel
               disabled={isDeleting}
               onClick={() => setDeleteTarget(null)}
-              className="rounded-xl font-semibold"
+              className="rounded-xl font-semibold cursor-pointer"
             >
               Cancel
             </AlertDialogCancel>
             <AlertDialogAction
               disabled={isDeleting}
               onClick={confirmDelete}
-              className="rounded-xl bg-destructive hover:bg-destructive/90 text-destructive-foreground font-semibold gap-2"
+              className="rounded-xl bg-destructive hover:bg-destructive/90 text-destructive-foreground font-semibold gap-2 cursor-pointer"
             >
               {isDeleting ? (
                 <>
@@ -597,5 +632,20 @@ export default function MyItinerariesPage() {
         </AlertDialogContent>
       </AlertDialog>
     </div>
+  );
+}
+
+export default function MyItinerariesPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="py-20 text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto" />
+          <p className="text-xs text-muted-foreground mt-3">Loading itineraries...</p>
+        </div>
+      }
+    >
+      <MyItinerariesContent />
+    </Suspense>
   );
 }

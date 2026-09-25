@@ -2,11 +2,10 @@
 
 import React, { useState } from "react";
 import { useSession } from "next-auth/react";
-import { MessageCircle } from "lucide-react";
-import { CornerTab } from "./components/ui/CornerTab";
+import { useRouter } from "next/navigation";
+import { MessageCircle, Compass } from "lucide-react";
 import { LandingNav } from "./components/ui/LandingNav";
 import { LandingHero } from "./components/ui/LandingHero";
-import { FloatingDock } from "./components/ui/FloatingDock";
 import { HowItWorks } from "./components/ui/HowItWorks";
 import { LandingFeatureGrid } from "./components/ui/LandingFeatureGrid";
 import { ExampleItineraryPreview } from "./components/ui/ExampleItineraryPreview";
@@ -22,6 +21,7 @@ import { AIChatAssistant } from "./components/ui/AIChatAssistant";
 import { InstallPrompt } from "./components/ui/InstallPrompt";
 import { SmartRecommendations } from "./components/ui/SmartRecommendations";
 import { UpgradeModal } from "./components/ui/UpgradeModal";
+import { TestSentryButton } from "@/components/monitoring/TestSentryButton";
 import { useItinerary } from "./hooks/useItinerary";
 import { useViewState } from "./hooks/useViewState";
 import { useActivityEditor } from "./hooks/useActivityEditor";
@@ -29,11 +29,23 @@ import { useSubscription } from "./hooks/useSubscription";
 
 /**
  * Main Page Component — Wander.AI Landing & In-App Generator Views
+ *
+ * Routing contract:
+ *   - LOGGED OUT  →  show full landing page (this file)
+ *   - LOGGED IN   →  redirect immediately to /dashboard
  */
 export default function Page() {
   // Get authentication status
   const { status } = useSession();
+  const router = useRouter();
   const isAuthenticated = status === "authenticated";
+
+  // Redirect authenticated users to the dashboard (their home)
+  React.useEffect(() => {
+    if (status === "authenticated") {
+      router.replace("/dashboard");
+    }
+  }, [status, router]);
 
   // Chat assistant state
   const [showChat, setShowChat] = useState(false);
@@ -47,6 +59,8 @@ export default function Page() {
     itineraryData,
     loading,
     error,
+    progress,
+    progressStep,
     generateItinerary,
     updateActivity,
     clearItinerary,
@@ -131,29 +145,28 @@ export default function Page() {
     navigateToMap();
   };
 
+  if (status === "authenticated") {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="flex flex-col items-center gap-3">
+          <div className="size-12 rounded-2xl bg-primary flex items-center justify-center text-primary-foreground shadow-soft animate-pulse">
+            <Compass className="size-6 text-white" />
+          </div>
+          <p className="text-sm font-semibold text-muted-foreground animate-pulse">
+            Redirecting to dashboard...
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-background text-foreground transition-colors duration-200 selection:bg-primary-soft selection:text-primary-soft-foreground">
-      {/* Orange Corner Tab attached to top-right edge */}
-      <CornerTab />
-
       {/* Top Navigation */}
       <LandingNav
         onViewChange={navigateToLanding}
         onExampleClick={() => {
           document.getElementById("example-itinerary")?.scrollIntoView({ behavior: "smooth" });
-        }}
-      />
-
-      {/* Floating Bottom Dock (Mobile & Desktop) */}
-      <FloatingDock
-        onPlanTripClick={() => {
-          if (view !== "landing") {
-            navigateToLanding();
-          }
-          window.scrollTo({ top: 0, behavior: "smooth" });
-          setTimeout(() => {
-            document.getElementById("planner-input")?.focus();
-          }, 100);
         }}
       />
 
@@ -210,7 +223,9 @@ export default function Page() {
       )}
 
       {/* Loading View */}
-      {view === "loading" && <LoadingView />}
+      {view === "loading" && (
+        <LoadingView progress={progress} step={progressStep} />
+      )}
 
       {/* Error View */}
       {view === "error" && (
@@ -279,6 +294,9 @@ export default function Page() {
           <span className="absolute -top-1 -right-1 size-3.5 bg-accent rounded-full ring-2 ring-card animate-pulse" />
         </button>
       )}
+
+      {/* Sentry Diagnostic Test Button */}
+      <TestSentryButton />
     </div>
   );
 }

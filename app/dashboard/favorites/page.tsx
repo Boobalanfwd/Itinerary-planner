@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Heart, Search, Compass } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useDebounce } from "@/hooks/useDebounce";
 
 export default function FavoritesPage() {
   const { data: session, status } = useSession();
@@ -13,9 +14,15 @@ export default function FavoritesPage() {
   const [favorites, setFavorites] = useState([]);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const debouncedSearchQuery = useDebounce(searchQuery, 300);
+
+  React.useEffect(() => {
+    if (status === "unauthenticated") {
+      router.push("/auth/signin?callbackUrl=/dashboard/favorites");
+    }
+  }, [status, router]);
 
   if (status === "unauthenticated") {
-    router.push("/auth/signin");
     return null;
   }
 

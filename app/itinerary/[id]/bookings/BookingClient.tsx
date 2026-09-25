@@ -1,10 +1,11 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Plane, Hotel, Utensils, Search, ExternalLink } from "lucide-react";
 import { Activity } from "@/app/components/types";
 import { FlightCard } from "@/app/components/ui/FlightCard";
 import { getBookingUrl } from "@/app/lib/bookingService";
+import { useDebounce } from "@/hooks/useDebounce";
 
 interface BookingClientProps {
   initialFlights: Activity[];
@@ -114,16 +115,18 @@ function HotelsSection({
   endDate?: string;
 }) {
   const [query, setQuery] = useState("");
+  const debouncedQuery = useDebounce(query, 400);
   const [results, setResults] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
 
-  const searchHotels = async () => {
-    if (!query) return;
+  const searchHotels = async (targetQuery: string = query) => {
+    const q = targetQuery.trim();
+    if (!q) return;
     setLoading(true);
     try {
       const res = await fetch(
         `/api/places/search?q=${encodeURIComponent(
-          query
+          q
         )}&type=hotel&proximity=ip`
       ); // simplified
       const data = await res.json();
@@ -143,6 +146,12 @@ function HotelsSection({
     }
   };
 
+  useEffect(() => {
+    if (debouncedQuery.trim().length >= 2) {
+      searchHotels(debouncedQuery);
+    }
+  }, [debouncedQuery]);
+
   return (
     <div className="space-y-4">
       <div className="flex gap-2">
@@ -155,7 +164,7 @@ function HotelsSection({
           onKeyDown={(e) => e.key === "Enter" && searchHotels()}
         />
         <button
-          onClick={searchHotels}
+          onClick={() => searchHotels()}
           disabled={loading}
           className="px-4 py-2 bg-emerald-500/20 text-emerald-400 rounded-lg font-medium hover:bg-emerald-500/30 transition-colors disabled:opacity-50"
         >
@@ -203,15 +212,17 @@ function HotelsSection({
 
 function RestaurantsSection({ destination }: { destination: string }) {
   const [query, setQuery] = useState("");
+  const debouncedQuery = useDebounce(query, 400);
   const [results, setResults] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
 
-  const searchDining = async () => {
-    if (!query) return;
+  const searchDining = async (targetQuery: string = query) => {
+    const q = targetQuery.trim();
+    if (!q) return;
     setLoading(true);
     try {
       const res = await fetch(
-        `/api/places/search?q=${encodeURIComponent(query)}&type=restaurant`
+        `/api/places/search?q=${encodeURIComponent(q)}&type=restaurant`
       );
       const data = await res.json();
       if (data.features) {
@@ -230,6 +241,12 @@ function RestaurantsSection({ destination }: { destination: string }) {
     }
   };
 
+  useEffect(() => {
+    if (debouncedQuery.trim().length >= 2) {
+      searchDining(debouncedQuery);
+    }
+  }, [debouncedQuery]);
+
   return (
     <div className="space-y-4">
       <div className="flex gap-2">
@@ -242,7 +259,7 @@ function RestaurantsSection({ destination }: { destination: string }) {
           onKeyDown={(e) => e.key === "Enter" && searchDining()}
         />
         <button
-          onClick={searchDining}
+          onClick={() => searchDining()}
           disabled={loading}
           className="px-4 py-2 bg-orange-500/20 text-orange-400 rounded-lg font-medium hover:bg-orange-500/30 transition-colors disabled:opacity-50"
         >

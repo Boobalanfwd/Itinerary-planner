@@ -110,11 +110,25 @@ export function CommandSearch({ open, onOpenChange, trips = [] }: CommandSearchP
             <span>My Itineraries</span>
           </CommandItem>
           <CommandItem
-            onSelect={() => runCommand(() => router.push("/marketplace"))}
+            onSelect={() => runCommand(() => router.push("/dashboard/marketplace"))}
             className="flex items-center gap-2 cursor-pointer py-2.5"
           >
             <Compass className="size-4 text-accent" />
             <span>Travel Marketplace</span>
+          </CommandItem>
+          <CommandItem
+            onSelect={() => runCommand(() => router.push("/dashboard/pricing"))}
+            className="flex items-center gap-2 cursor-pointer py-2.5"
+          >
+            <CreditCard className="size-4 text-emerald-500" />
+            <span>Pricing & Plans</span>
+          </CommandItem>
+          <CommandItem
+            onSelect={() => runCommand(() => router.push("/dashboard/profile"))}
+            className="flex items-center gap-2 cursor-pointer py-2.5"
+          >
+            <User className="size-4 text-primary" />
+            <span>My Profile</span>
           </CommandItem>
           <CommandItem
             onSelect={() => runCommand(() => router.push("/dashboard/settings"))}

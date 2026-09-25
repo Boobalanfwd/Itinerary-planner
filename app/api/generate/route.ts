@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
+import * as Sentry from "@sentry/nextjs";
 import { authOptions } from "@/app/lib/auth";
 import { geminiService, GeminiService } from "@/app/services/geminiService";
 import { createItinerary } from "@/app/services/itineraryService";
 import { createJob, updateJobProgress, completeJob, failJob } from "@/lib/repositories/jobRepository";
-import { checkAndIncrementQuota } from "@/lib/rateLimit";
+import { checkQuotaWithEdgeFallback } from "@/lib/edgeRateLimit";
 import { TripCreateSchema } from "@/schemas/trip";
 import { verifyAndEnrichItinerary } from "@/lib/maps/placeVerification";
 import { getForecastForDestination } from "@/lib/weather";
@@ -51,8 +52,8 @@ export async function POST(req: NextRequest) {
 
     const data = parseResult.data;
 
-    // Check user rate limit / monthly quota
-    const quota = await checkAndIncrementQuota(user.id);
+    // Check user rate limit / monthly quota (edge Redis with DB fallback)
+    const quota = await checkQuotaWithEdgeFallback(user.id, user.subscriptionTier);
     if (!quota.allowed) {
       return NextResponse.json(
         {
@@ -199,6 +200,11 @@ export async function POST(req: NextRequest) {
         return savedItinerary;
       } catch (err: any) {
         console.error(`[generate] Job ${job.id} failed:`, err);
+        // Report to Sentry with job context so we can debug failures
+        Sentry.captureException(err, {
+          tags: { jobId: job.id, destination: data.destination },
+          extra: { duration: data.duration, travelers: data.travelers, budget: data.budget },
+        });
         await failJob(job.id, err?.message || "Generation error");
         throw err;
       }
@@ -228,6 +234,10 @@ export async function POST(req: NextRequest) {
     });
   } catch (error: any) {
     console.error("[generate] Handler error:", error);
+    // Capture top-level handler errors (auth failures, validation errors, etc.)
+    Sentry.captureException(error, {
+      tags: { route: "/api/generate" },
+    });
     return NextResponse.json(
       {
         success: false,
