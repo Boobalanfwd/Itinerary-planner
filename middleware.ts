@@ -40,6 +40,7 @@ const PUBLIC_PREFIXES = [
   "/api/notifications", // Notifications and invite inbox
   "/api/users/search", // In-portal traveler search
   "/api/marketplace",  // Public community trip marketplace
+  "/api/chat",         // Real-time chat & social connections
   "/_next",
   "/favicon",
   "/icon",
