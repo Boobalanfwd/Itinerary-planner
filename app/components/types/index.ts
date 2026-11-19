@@ -67,6 +67,7 @@ export interface Day {
   day: number;
   title: string;
   theme?: string;
+  description?: string;
   date: string;
   activities: Activity[];
 }
