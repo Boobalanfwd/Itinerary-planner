@@ -1101,6 +1101,12 @@ export function SplitItineraryView({
                         </div>
                       </div>
 
+                    {day.description && (
+                      <p className="text-sm leading-relaxed text-muted-foreground">
+                        {day.description}
+                      </p>
+                    )}
+
                       {/* Day Action Buttons */}
                       <div className="flex items-center gap-2">
                         {/* Day Comments Button */}

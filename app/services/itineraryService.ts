@@ -105,6 +105,7 @@ export async function createItinerary(
           dayNumber: day.day_number,
           title: day.theme ?? `Day ${day.day_number}`,
           theme: day.theme ?? null,
+          description: day.description ?? null,
           date: new Date(Date.now() + (day.day_number - 1) * 86400000),
           activities: {
             create: activitiesData,
