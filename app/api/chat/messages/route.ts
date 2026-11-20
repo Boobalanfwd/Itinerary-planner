@@ -46,7 +46,18 @@ export async function GET(request: NextRequest) {
     // Check Instagram-like connection status
     const { status, inviteId } = await getConnectionStatus(currentUserId, peerId);
     const conversationKey = `p2p:${getConversationKey(currentUserId, peerId)}`;
-    const messages = await getConversationMessages(conversationKey, 80);
+    const messages = status === "ACCEPTED" ? await getConversationMessages(conversationKey, 80) : [];
+    if (status === "ACCEPTED") {
+      await prisma.notification.updateMany({
+        where: {
+          userId: currentUserId,
+          type: "MESSAGE",
+          isRead: false,
+          linkUrl: { contains: peerId },
+        },
+        data: { isRead: true },
+      });
+    }
 
     return NextResponse.json({
       success: true,
@@ -120,6 +131,28 @@ export async function POST(request: NextRequest) {
       recipientId,
       text,
     });
+
+    const [recipient, sender] = await Promise.all([
+      prisma.user.findUnique({ where: { id: recipientId }, select: { id: true } }),
+      prisma.user.findUnique({ where: { id: currentUserId }, select: { name: true } }),
+    ]);
+    if (recipient) {
+      try {
+        await prisma.notification.create({
+          data: {
+            userId: recipient.id,
+            actorId: currentUserId,
+            type: "MESSAGE",
+            title: `Message from ${sender?.name || "a traveler"}`,
+            message: text.slice(0, 160),
+            linkUrl: `/dashboard/chat?peer=${encodeURIComponent(currentUserId)}`,
+            data: { messageId: saved.id, peerId: currentUserId },
+          },
+        });
+      } catch (error) {
+        console.warn("Could not persist direct-message notification:", error);
+      }
+    }
 
     return NextResponse.json({
       success: true,

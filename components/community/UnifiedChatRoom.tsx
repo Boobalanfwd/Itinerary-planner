@@ -183,6 +183,8 @@ export function UnifiedChatRoom() {
     },
   ]);
   const [activeChatId, setActiveChatId] = useState<string>("world-chat");
+  const activeChatIdRef = useRef(activeChatId);
+  useEffect(() => { activeChatIdRef.current = activeChatId; }, [activeChatId]);
   const [showMobileChat, setShowMobileChat] = useState(false);
 
   // Messages cache per conversation
@@ -208,6 +210,8 @@ export function UnifiedChatRoom() {
     participantAvatar: string;
     isMuted: boolean;
     isVideoOff: boolean;
+    incoming: boolean;
+    peerId: string;
   }>({
     isOpen: false,
     type: "video",
@@ -215,7 +219,21 @@ export function UnifiedChatRoom() {
     participantAvatar: "",
     isMuted: false,
     isVideoOff: false,
+    incoming: false,
+    peerId: "",
   });
+  const [localStream, setLocalStream] = useState<MediaStream | null>(null);
+  const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
+  const socketRef = useRef<Socket | null>(null);
+  const localStreamRef = useRef<MediaStream | null>(null);
+  const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
+  const callTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingOfferRef = useRef<RTCSessionDescriptionInit | null>(null);
+  const pendingCallInviteRef = useRef<{ fromUserId: string; name: string; avatar: string; type: "video" | "audio" } | null>(null);
+  const pendingIceRef = useRef<RTCIceCandidateInit[]>([]);
+  const localVideoRef = useRef<HTMLVideoElement>(null);
+  const remoteVideoRef = useRef<HTMLVideoElement>(null);
+  const remoteAudioRef = useRef<HTMLAudioElement>(null);
 
   // Current user details
   const currentUserId = session?.user?.id || session?.user?.email || "guest-traveler";
@@ -224,12 +242,52 @@ export function UnifiedChatRoom() {
     session?.user?.image ||
     `https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80`;
 
+  useEffect(() => { if (localVideoRef.current) localVideoRef.current.srcObject = localStream; }, [localStream]);
+  useEffect(() => { if (remoteVideoRef.current) remoteVideoRef.current.srcObject = remoteStream; }, [remoteStream]);
+  useEffect(() => { if (remoteAudioRef.current) remoteAudioRef.current.srcObject = callState.type === "audio" ? remoteStream : null; }, [remoteStream, callState.type]);
+
+  const createCallPeer = (peerId: string, stream: MediaStream) => {
+    const peer = new RTCPeerConnection({
+      iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+    });
+    stream.getTracks().forEach((track) => peer.addTrack(track, stream));
+    peer.onicecandidate = (event) => {
+      if (event.candidate) socketRef.current?.emit("call:signal", { toUserId: peerId, kind: "ice", payload: event.candidate.toJSON() });
+    };
+    peer.ontrack = (event) => setRemoteStream(event.streams[0] || new MediaStream([event.track]));
+    peer.onconnectionstatechange = () => {
+      if (peer.connectionState === "failed") toast.error("Call connection failed. Check your network and try again.");
+    };
+    peerConnectionRef.current = peer;
+    return peer;
+  };
+
+  const closeCallMedia = () => {
+    if (callTimeoutRef.current) clearTimeout(callTimeoutRef.current);
+    callTimeoutRef.current = null;
+    peerConnectionRef.current?.close();
+    peerConnectionRef.current = null;
+    localStreamRef.current?.getTracks().forEach((track) => track.stop());
+    localStreamRef.current = null;
+    setLocalStream(null);
+    setRemoteStream(null);
+    pendingOfferRef.current = null;
+    pendingIceRef.current = [];
+  };
+
+  useEffect(() => () => {
+    peerConnectionRef.current?.close();
+    localStreamRef.current?.getTracks().forEach((track) => track.stop());
+  }, []);
+
   // Input & scroll refs
   const [inputText, setInputText] = useState("");
   const [inviteNote, setInviteNote] = useState("");
   const [isSendingInvite, setIsSendingInvite] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const handledPeerRef = useRef<string>("");
+  const handledTabRef = useRef(false);
 
   // 1. Fetch Real Live World Chat Messages from API
   const fetchWorldMessages = useCallback(async () => {
@@ -449,6 +507,24 @@ export function UnifiedChatRoom() {
     }
   }, [activeChatId, fetchWorldMessages, fetchDirectMessages]);
 
+  useEffect(() => {
+    if (searchParams.get("tab") === "requests" && !handledTabRef.current) {
+      handledTabRef.current = true;
+      setSocialTab("requests");
+    }
+    const peerId = searchParams.get("peer");
+    if (!peerId || handledPeerRef.current === peerId || !conversations.some((conversation) => conversation.id === peerId)) return;
+    handledPeerRef.current = peerId;
+    setActiveChatId(peerId);
+    setShowMobileChat(true);
+  }, [searchParams, conversations]);
+
+  useEffect(() => {
+    if (activeChatId !== "world-chat" && socket && currentUserId) {
+      socket.emit("p2p:join", { userId: currentUserId, peerId: activeChatId });
+    }
+  }, [activeChatId, socket, currentUserId]);
+
   // 4. Initialize Socket.IO connection
   useEffect(() => {
     const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:3001";
@@ -456,16 +532,21 @@ export function UnifiedChatRoom() {
       transports: ["websocket", "polling"],
       reconnectionAttempts: 4,
       timeout: 5000,
+      withCredentials: true,
     });
 
     s.on("connect", () => {
       setIsConnected(true);
+      socketRef.current = s;
       s.emit("community:join", { id: currentUserId, name: currentUserName });
       s.emit("user:register", { userId: currentUserId });
+      if (activeChatIdRef.current === "world-chat") void fetchWorldMessages();
+      else void fetchDirectMessages(activeChatIdRef.current);
     });
 
     s.on("disconnect", () => {
       setIsConnected(false);
+      if (socketRef.current === s) socketRef.current = null;
     });
 
     // World Chat socket messages
@@ -486,10 +567,11 @@ export function UnifiedChatRoom() {
         isOutgoing: msg.user?.id === currentUserId,
       };
 
-      setMessagesMap((prev) => ({
-        ...prev,
-        "world-chat": [...(prev["world-chat"] || []), incoming],
-      }));
+      setMessagesMap((prev) => {
+        const messages = prev["world-chat"] || [];
+        if (messages.some((message) => message.id === incoming.id)) return prev;
+        return { ...prev, "world-chat": [...messages, incoming] };
+      });
 
       setConversations((prev) =>
         prev.map((c) =>
@@ -498,7 +580,7 @@ export function UnifiedChatRoom() {
                 ...c,
                 lastMessage: `${msg.user?.name || "Traveler"}: ${msg.text}`,
                 lastMessageTime: "now",
-                unreadCount: activeChatId === "world-chat" ? 0 : (c.unreadCount || 0) + 1,
+                unreadCount: activeChatIdRef.current === "world-chat" ? 0 : (c.unreadCount || 0) + 1,
               }
             : c
         )
@@ -543,19 +625,54 @@ export function UnifiedChatRoom() {
                 lastMessage: data.message.text,
                 lastMessageTime: "now",
                 isReadByPeer: isMe,
-                unreadCount: activeChatId === peerId || isMe ? 0 : (c.unreadCount || 0) + 1,
+                unreadCount: activeChatIdRef.current === peerId || isMe ? 0 : (c.unreadCount || 0) + 1,
               }
             : c
         )
       );
+      if (!isMe && activeChatIdRef.current === peerId) void fetchDirectMessages(peerId);
+    });
+
+    s.on("social:updated", () => { void fetchConnections(); });
+
+    s.on("call:signal", async (signal: { fromUserId: string; kind: string; payload?: unknown }) => {
+      const rawPayload = signal.payload;
+      const payload = rawPayload && typeof rawPayload === "object" ? rawPayload as Record<string, unknown> : {};
+      if (signal.kind === "invite") {
+        const name = typeof payload.name === "string" ? payload.name : "Traveler";
+        pendingCallInviteRef.current = { fromUserId: signal.fromUserId, name, avatar: typeof payload.avatar === "string" ? payload.avatar : "", type: payload.type === "video" ? "video" : "audio" };
+        if (pendingOfferRef.current) {
+          setCallState({ isOpen: true, type: pendingCallInviteRef.current.type, participantName: name, participantAvatar: pendingCallInviteRef.current.avatar, isMuted: false, isVideoOff: false, incoming: true, peerId: signal.fromUserId });
+        }
+      } else if (signal.kind === "offer") {
+        pendingOfferRef.current = rawPayload as RTCSessionDescriptionInit;
+        if (pendingCallInviteRef.current?.fromUserId === signal.fromUserId) {
+          const invite = pendingCallInviteRef.current;
+          setCallState({ isOpen: true, type: invite.type, participantName: invite.name, participantAvatar: invite.avatar, isMuted: false, isVideoOff: false, incoming: true, peerId: signal.fromUserId });
+        }
+      } else if (signal.kind === "answer") {
+        await peerConnectionRef.current?.setRemoteDescription(new RTCSessionDescription(rawPayload as RTCSessionDescriptionInit));
+        for (const candidate of pendingIceRef.current.splice(0)) await peerConnectionRef.current?.addIceCandidate(new RTCIceCandidate(candidate));
+      } else if (signal.kind === "ice") {
+        if (peerConnectionRef.current?.remoteDescription) await peerConnectionRef.current.addIceCandidate(new RTCIceCandidate(rawPayload as RTCIceCandidateInit));
+        else pendingIceRef.current.push(rawPayload as RTCIceCandidateInit);
+      } else if (signal.kind === "accepted") {
+        toast.success("Your friend answered the call");
+      } else if (signal.kind === "declined" || signal.kind === "ended") {
+        closeCallMedia();
+        setCallState((prev) => ({ ...prev, isOpen: false }));
+        toast.info(signal.kind === "declined" ? "Call declined" : "Call ended");
+      }
     });
 
     setSocket(s);
+    socketRef.current = s;
 
     return () => {
       s.disconnect();
+      if (socketRef.current === s) socketRef.current = null;
     };
-  }, [currentUserId, currentUserName, activeChatId]);
+  }, [currentUserId, currentUserName, fetchConnections, fetchWorldMessages, fetchDirectMessages]);
 
   // Scroll to bottom whenever messages update
   useEffect(() => {
@@ -578,6 +695,12 @@ export function UnifiedChatRoom() {
       const data = await res.json();
       if (data.success) {
         toast.success("Chat invite sent successfully!");
+        socket?.emit("social:request", {
+          recipientId: targetUserId,
+          senderId: currentUserId,
+          senderName: currentUserName,
+          inviteId: data.inviteId,
+        });
         setInviteNote("");
         fetchConnections();
       } else {
@@ -604,6 +727,7 @@ export function UnifiedChatRoom() {
       const data = await res.json();
       if (data.success) {
         toast.success("Chat request accepted! You can now message each other.");
+        socket?.emit("social:updated", { userIds: [targetUserId, currentUserId] });
         await fetchConnections();
         fetchDirectMessages(targetUserId);
       } else {
@@ -628,6 +752,7 @@ export function UnifiedChatRoom() {
       const data = await res.json();
       if (data.success) {
         toast.info("Chat request declined");
+        socket?.emit("social:updated", { userIds: [targetUserId, currentUserId] });
         fetchConnections();
         setActiveChatId("world-chat");
       } else {
@@ -668,14 +793,6 @@ export function UnifiedChatRoom() {
       prev.map((c) => (c.id === conv.id ? { ...c, unreadCount: 0 } : c))
     );
 
-    // If P2P chat, emit socket join room
-    if (conv.id !== "world-chat" && socket && currentUserId) {
-      socket.emit("p2p:join", {
-        userId: currentUserId,
-        peerId: conv.id,
-      });
-    }
-
     setTimeout(() => {
       inputRef.current?.focus();
     }, 100);
@@ -700,8 +817,9 @@ export function UnifiedChatRoom() {
       minute: "2-digit",
     });
 
+    const optimisticId = `local-${Date.now()}`;
     const outgoingMsg: MessageItem = {
-      id: `local-${Date.now()}`,
+      id: optimisticId,
       senderId: currentUserId,
       senderName: currentUserName,
       senderAvatar: currentUserAvatar,
@@ -733,15 +851,25 @@ export function UnifiedChatRoom() {
     // Send through API and broadcast through Socket
     if (activeChatId === "world-chat") {
       try {
-        await fetch("/api/chat/world", {
+        const response = await fetch("/api/chat/world", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ text }),
         });
+        const result = await response.json();
+        if (!response.ok || !result.success) throw new Error(result.error || "Message could not be sent");
+        setMessagesMap((prev) => ({
+          ...prev,
+          "world-chat": (prev["world-chat"] || []).map((message) =>
+            message.id === optimisticId ? { ...message, id: result.message.id, createdAt: result.message.createdAt } : message
+          ),
+        }));
 
-        if (socket && isConnected) {
+        if (socket) {
           socket.emit("community:send-message", {
             text,
+            message: result.message,
+            mentionedUserIds: result.mentionedUserIds,
             user: {
               id: currentUserId,
               name: currentUserName,
@@ -752,6 +880,8 @@ export function UnifiedChatRoom() {
         }
       } catch (err) {
         console.error("Failed to post world message:", err);
+        setMessagesMap((prev) => ({ ...prev, "world-chat": (prev["world-chat"] || []).filter((message) => message.id !== optimisticId) }));
+        toast.error("Message could not be sent. Please try again.");
       }
     } else {
       try {
@@ -767,10 +897,18 @@ export function UnifiedChatRoom() {
         if (!res.ok) {
           const err = await res.json();
           toast.error(err.error || "Cannot send message");
+          setMessagesMap((prev) => ({ ...prev, [activeChatId]: (prev[activeChatId] || []).filter((message) => message.id !== optimisticId) }));
           return;
         }
+        const result = await res.json();
+        setMessagesMap((prev) => ({
+          ...prev,
+          [activeChatId]: (prev[activeChatId] || []).map((message) =>
+            message.id === optimisticId ? { ...message, id: result.message.id, createdAt: result.message.createdAt } : message
+          ),
+        }));
 
-        if (socket && isConnected) {
+        if (socket) {
           socket.emit("p2p:send-message", {
             senderId: currentUserId,
             senderName: currentUserName,
@@ -780,10 +918,13 @@ export function UnifiedChatRoom() {
             recipientName: activeConv?.title || "Explorer",
             recipientAvatar: activeConv?.avatar,
             text,
+            message: result.message,
           });
         }
       } catch (err) {
         console.error("Failed to post direct message:", err);
+        setMessagesMap((prev) => ({ ...prev, [activeChatId]: (prev[activeChatId] || []).filter((message) => message.id !== optimisticId) }));
+        toast.error("Message could not be sent. Please try again.");
       }
     }
   };
@@ -831,25 +972,77 @@ export function UnifiedChatRoom() {
   const pinnedChats = filteredConversations.filter((c) => c.isPinned);
   const otherChats = filteredConversations.filter((c) => !c.isPinned);
 
-  // Trigger video or audio call
-  const startCall = (type: "video" | "audio") => {
+  const startCall = async (type: "video" | "audio") => {
     if (activeConversation.connectionStatus !== "ACCEPTED" && !activeConversation.isWorldChat) {
       toast.error("You can only call accepted friends!");
       return;
     }
+    if (!activeConversation.id || activeConversation.id === "world-chat") {
+      toast.error("Calls are available in one-to-one friend chats.");
+      return;
+    }
+    if (!socketRef.current?.connected) {
+      toast.error("Reconnecting to calls. Please try again in a moment.");
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: type === "video" });
+      localStreamRef.current = stream;
+      setLocalStream(stream);
+      setRemoteStream(null);
+      setCallState({ isOpen: true, type, participantName: activeConversation.title, participantAvatar: activeConversation.avatar, isMuted: false, isVideoOff: false, incoming: false, peerId: activeConversation.id });
+      socketRef.current.emit("call:signal", { toUserId: activeConversation.id, kind: "invite", payload: { type, name: currentUserName, avatar: currentUserAvatar } });
+      const peer = createCallPeer(activeConversation.id, stream);
+      const offer = await peer.createOffer();
+      await peer.setLocalDescription(offer);
+      socketRef.current.emit("call:signal", { toUserId: activeConversation.id, kind: "offer", payload: offer });
+      callTimeoutRef.current = setTimeout(() => {
+        if (peerConnectionRef.current && peerConnectionRef.current.connectionState !== "connected") {
+          socketRef.current?.emit("call:signal", { toUserId: activeConversation.id, kind: "ended" });
+          closeCallMedia();
+          setCallState((previous) => ({ ...previous, isOpen: false }));
+          toast.error("No answer. The call has ended.");
+        }
+      }, 35000);
+    } catch (error) {
+      closeCallMedia();
+      setCallState((prev) => ({ ...prev, isOpen: false }));
+      console.error("Could not start WebRTC call:", error);
+      toast.error("Camera or microphone permission is required to start a call.");
+    }
+  };
 
-    setCallState({
-      isOpen: true,
-      type,
-      participantName: activeConversation.title,
-      participantAvatar: activeConversation.avatar,
-      isMuted: false,
-      isVideoOff: false,
-    });
-    toast.success(
-      `Starting ${type} call with ${activeConversation.title}...`,
-      { duration: 2500 }
-    );
+  const acceptIncomingCall = async () => {
+    const peerId = callState.peerId;
+    if (!peerId || !pendingOfferRef.current) {
+      toast.error("Call setup is still loading. Try accepting again.");
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: callState.type === "video" });
+      localStreamRef.current = stream;
+      setLocalStream(stream);
+      const peer = createCallPeer(peerId, stream);
+      await peer.setRemoteDescription(new RTCSessionDescription(pendingOfferRef.current));
+      for (const candidate of pendingIceRef.current.splice(0)) await peer.addIceCandidate(new RTCIceCandidate(candidate));
+      const answer = await peer.createAnswer();
+      await peer.setLocalDescription(answer);
+      socketRef.current?.emit("call:signal", { toUserId: peerId, kind: "accepted" });
+      socketRef.current?.emit("call:signal", { toUserId: peerId, kind: "answer", payload: answer });
+      pendingOfferRef.current = null;
+    pendingCallInviteRef.current = null;
+      setCallState((prev) => ({ ...prev, incoming: false }));
+    } catch (error) {
+      console.error("Could not accept WebRTC call:", error);
+      closeCallMedia();
+      toast.error("Could not access your camera or microphone.");
+    }
+  };
+
+  const finishCall = (kind: "ended" | "declined" = "ended") => {
+    if (callState.peerId) socketRef.current?.emit("call:signal", { toUserId: callState.peerId, kind });
+    closeCallMedia();
+    setCallState((prev) => ({ ...prev, isOpen: false, incoming: false }));
   };
 
   const pendingRequestsCount = incomingRequests.length;
@@ -1830,12 +2023,20 @@ export function UnifiedChatRoom() {
       <Dialog
         open={callState.isOpen}
         onOpenChange={(open) =>
-          setCallState((prev) => ({ ...prev, isOpen: open }))
+          open ? setCallState((prev) => ({ ...prev, isOpen: true })) : finishCall()
         }
       >
-        <DialogContent className="sm:max-w-md rounded-[32px] p-8 text-center bg-card border border-border/80 shadow-soft-xl">
+        <DialogContent className="sm:max-w-xl rounded-[32px] p-6 sm:p-8 text-center bg-card border border-border/80 shadow-soft-xl">
           <div className="flex flex-col items-center gap-4">
-            <div className="relative">
+            {callState.type === "video" && !callState.incoming && (
+              <div className="relative w-full aspect-video rounded-2xl bg-zinc-950 overflow-hidden">
+                <video ref={remoteVideoRef} autoPlay playsInline className="w-full h-full object-cover" />
+                <audio ref={remoteAudioRef} autoPlay className="hidden" />
+                {!remoteStream && <div className="absolute inset-0 grid place-items-center text-sm text-white/70">Connecting video…</div>}
+                <video ref={localVideoRef} autoPlay muted playsInline className="absolute right-3 bottom-3 w-28 aspect-video object-cover rounded-xl border border-white/40 bg-zinc-800" />
+              </div>
+            )}
+            <div className={`relative ${callState.type === "video" && !callState.incoming ? "hidden" : ""}`}>
               <div className="size-24 rounded-full p-1 bg-gradient-to-tr from-amber-500 to-orange-500 shadow-soft animate-pulse">
                 <Avatar className="size-full rounded-full border-2 border-background">
                   <AvatarImage
@@ -1855,17 +2056,25 @@ export function UnifiedChatRoom() {
                 {callState.participantName}
               </h4>
               <p className="text-xs text-muted-foreground font-medium mt-1">
-                {callState.type === "video" ? "Video Calling..." : "Audio Calling..."}
+                {callState.incoming ? `Incoming ${callState.type} call` : remoteStream ? "Connected" : `Calling by ${callState.type}…`}
               </p>
             </div>
 
             {/* Call action buttons */}
             <div className="flex items-center gap-4 mt-6">
+              {callState.incoming ? (
+                <>
+                  <Button onClick={() => finishCall("declined")} variant="destructive" className="rounded-full gap-2"><PhoneOff className="size-4" /> Decline</Button>
+                  <Button onClick={() => void acceptIncomingCall()} className="rounded-full gap-2 bg-emerald-600 hover:bg-emerald-700"><Phone className="size-4" /> Answer</Button>
+                </>
+              ) : <>
               <button
                 type="button"
                 onClick={() => {
+                  const nextMuted = !callState.isMuted;
+                  localStreamRef.current?.getAudioTracks().forEach((track) => { track.enabled = !nextMuted; });
                   setCallState((prev) => ({ ...prev, isMuted: !prev.isMuted }));
-                  toast.info(callState.isMuted ? "Unmuted" : "Muted microphone");
+                  toast.info(nextMuted ? "Muted microphone" : "Unmuted microphone");
                 }}
                 className={`size-12 rounded-full flex items-center justify-center transition-all cursor-pointer ${
                   callState.isMuted
@@ -1884,12 +2093,14 @@ export function UnifiedChatRoom() {
                 <button
                   type="button"
                   onClick={() => {
+                    const nextVideoOff = !callState.isVideoOff;
+                    localStreamRef.current?.getVideoTracks().forEach((track) => { track.enabled = !nextVideoOff; });
                     setCallState((prev) => ({
                       ...prev,
                       isVideoOff: !prev.isVideoOff,
                     }));
                     toast.info(
-                      callState.isVideoOff ? "Camera turned on" : "Camera turned off"
+                      nextVideoOff ? "Camera turned off" : "Camera turned on"
                     );
                   }}
                   className={`size-12 rounded-full flex items-center justify-center transition-all cursor-pointer ${
@@ -1910,13 +2121,14 @@ export function UnifiedChatRoom() {
               <button
                 type="button"
                 onClick={() => {
-                  setCallState((prev) => ({ ...prev, isOpen: false }));
+                  finishCall();
                   toast.info("Call ended");
                 }}
                 className="size-14 rounded-full bg-destructive text-destructive-foreground hover:bg-destructive/90 flex items-center justify-center shadow-soft cursor-pointer transition-all hover:scale-105"
               >
                 <PhoneOff className="size-6" />
               </button>
+              </>}
             </div>
           </div>
         </DialogContent>

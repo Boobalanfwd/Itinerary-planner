@@ -193,22 +193,6 @@ export function FloatingDock({ onPlanTripClick }: FloatingDockProps) {
               <ChevronRight className="size-4 text-muted-foreground group-hover:translate-x-1 transition-transform" />
             </Link>
 
-            <Link
-              href={isAuthenticated ? "/dashboard/pricing" : "/auth/signin?callbackUrl=/dashboard/pricing"}
-              onClick={() => setIsMenuOpen(false)}
-              className="flex items-center justify-between p-4 rounded-2xl border border-border/80 bg-card hover:bg-muted transition-colors group"
-            >
-              <div className="flex items-center gap-3">
-                <div className="size-9 rounded-xl bg-tag-peach text-tag-peach-foreground flex items-center justify-center font-bold">
-                  💎
-                </div>
-                <div>
-                  <p className="text-sm font-bold text-foreground">Pricing & Tiers</p>
-                  <p className="text-xs text-muted-foreground">Unlimited itineraries and PRO features</p>
-                </div>
-              </div>
-              <ChevronRight className="size-4 text-muted-foreground group-hover:translate-x-1 transition-transform" />
-            </Link>
           </div>
 
           <div className="flex justify-end">

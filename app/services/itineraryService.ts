@@ -9,9 +9,8 @@ import prisma from "@/lib/prisma";
 import { ItineraryData } from "../components/types";
 import { ActivityType as PrismaActivityType } from "@prisma/client";
 import { AiItinerary, AiActivity } from "./geminiService";
-import { resolveDestinationImage } from "./imageService";
+import { getCuratedFallback } from "./imageService";
 import { randomUUID } from "crypto";
-import { resolvePlace } from "@/lib/maps/placeVerification";
 
 // ── Type mapping helpers ───────────────────────────────────────────────────────
 
@@ -71,19 +70,6 @@ export async function createItinerary(
       aiData.days.map(async (day) => {
         const activitiesData = await Promise.all(
           day.activities.map(async (activity, idx) => {
-            let place = null;
-            try {
-              place = await resolvePlace(
-                activity.place_name,
-                aiData.destination
-              );
-            } catch (pErr) {
-              console.warn(
-                `[itineraryService] Place resolution non-blocking error for "${activity.place_name}":`,
-                pErr
-              );
-            }
-
             return {
               time: activity.start_time ?? "09:00",
               title: activity.place_name,
@@ -93,10 +79,10 @@ export async function createItinerary(
               duration: activity.duration_min ?? null,
               cost: activity.est_cost_usd ?? null,
               position: idx,
-              locationLat: place?.lat ?? null,
-              locationLng: place?.lng ?? null,
-              address: place?.formattedAddress ?? null,
-              placeId: place?.dbId ?? null,
+              locationLat: null,
+              locationLng: null,
+              address: null,
+              placeId: null,
             };
           })
         );
@@ -114,16 +100,8 @@ export async function createItinerary(
       })
     );
 
-    // Resolve city cover image link via LLM and Unsplash
-    let coverImageUrl = "/images/destinations/tokyo.jpg";
-    try {
-      coverImageUrl = await resolveDestinationImage(
-        aiData.destination,
-        aiData.title
-      );
-    } catch (imgErr) {
-      console.warn("[itineraryService] Destination image resolution fallback:", imgErr);
-    }
+    // Keep initial save fast; use a curated local image while optional enrichment runs.
+    const coverImageUrl = getCuratedFallback(aiData.destination);
 
     const itinerary = await prisma.itinerary.create({
       data: {

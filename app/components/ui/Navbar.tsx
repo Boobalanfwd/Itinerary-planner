@@ -7,7 +7,6 @@ import { cn } from "../lib/utils";
 import { ViewState } from "../types";
 import { Button } from "@/components/ui/button";
 import { UserProfileDropdown } from "./UserProfileDropdown";
-import { useSubscription } from "@/app/hooks/useSubscription";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { NotificationInviteInbox } from "@/components/collaboration/NotificationInviteInbox";
 import Link from "next/link";
@@ -23,7 +22,6 @@ export function Navbar({ onViewChange }: NavbarProps) {
   const [isScrolled, setIsScrolled] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const { data: session, status } = useSession();
-  const { tier } = useSubscription();
 
   useEffect(() => {
     const handleScroll = () => {
@@ -75,12 +73,6 @@ export function Navbar({ onViewChange }: NavbarProps) {
           >
             Marketplace
           </Link>
-          <Link
-            href="/pricing"
-            className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
-          >
-            Pricing
-          </Link>
 
           {/* Notifications and Trip Invites Inbox */}
           <NotificationInviteInbox currentUserId={session?.user?.id} />
@@ -90,7 +82,7 @@ export function Navbar({ onViewChange }: NavbarProps) {
 
           {/* User Section */}
           {status === "authenticated" && session?.user ? (
-            <UserProfileDropdown user={session.user} subscriptionTier={tier} />
+            <UserProfileDropdown user={session.user} />
           ) : (
             <Button
               asChild
@@ -134,13 +126,6 @@ export function Navbar({ onViewChange }: NavbarProps) {
             onClick={() => setIsMobileMenuOpen(false)}
           >
             Marketplace
-          </Link>
-          <Link
-            href="/pricing"
-            className="text-base font-medium text-foreground/80 hover:text-foreground"
-            onClick={() => setIsMobileMenuOpen(false)}
-          >
-            Pricing
           </Link>
 
           {/* Mobile User Section */}

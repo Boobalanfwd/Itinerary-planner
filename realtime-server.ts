@@ -1,6 +1,7 @@
 import http from "http";
 import { Server, Socket } from "socket.io";
 import { PrismaClient } from "@prisma/client";
+import { decode as decodeNextAuthToken } from "next-auth/jwt";
 
 const prisma = new PrismaClient();
 
@@ -104,6 +105,13 @@ export interface P2PDirectMessage {
 
 // In-memory P2P message storage keyed by deterministic conversation roomId: "p2p:userIdA:userIdB"
 const p2pConversationMessages = new Map<string, P2PDirectMessage[]>();
+type PendingCallSignal = { fromUserId: string; kind: string; payload?: unknown; createdAt: number };
+const pendingCallSignals = new Map<string, PendingCallSignal[]>();
+const activeCallPairs = new Map<string, number>();
+
+function getCallPairKey(firstId: string, secondId: string) {
+  return [firstId, secondId].sort().join(":");
+}
 
 function getP2PConversationKey(u1: string, u2: string) {
   return [u1, u2].sort().join(":");
@@ -161,13 +169,38 @@ const server = http.createServer((req, res) => {
   res.end();
 });
 
+const allowedOrigins = [
+  process.env.NEXTAUTH_URL,
+  "http://localhost:3000",
+  "http://127.0.0.1:3000",
+].filter((origin): origin is string => Boolean(origin));
+
 const io = new Server(server, {
   cors: {
-    origin: "*",
+    origin: allowedOrigins,
+    credentials: true,
     methods: ["GET", "POST"],
   },
   pingTimeout: 20000,
   pingInterval: 10000,
+});
+
+io.use(async (socket, next) => {
+  const cookieHeader = socket.handshake.headers.cookie || "";
+  const secureCookie = process.env.NEXTAUTH_URL?.startsWith("https://") || Boolean(process.env.VERCEL);
+  const cookieName = secureCookie ? "__Secure-next-auth.session-token" : "next-auth.session-token";
+  const tokenCookie = cookieHeader.split(";").map((item) => item.trim()).find((item) => item.startsWith(`${cookieName}=`));
+  const token = tokenCookie?.slice(cookieName.length + 1);
+  if (!token || !process.env.NEXTAUTH_SECRET) return next(new Error("Authentication required"));
+
+  try {
+    const decoded = await decodeNextAuthToken({ token: decodeURIComponent(token), secret: process.env.NEXTAUTH_SECRET });
+    if (!decoded?.sub) return next(new Error("Authentication required"));
+    socket.data.authUserId = decoded.sub;
+    next();
+  } catch {
+    next(new Error("Authentication required"));
+  }
 });
 
 function getRoster(tripId: string): UserPresence[] {
@@ -199,13 +232,17 @@ setInterval(() => {
 
 io.on("connection", (socket: Socket) => {
   let currentTripId: string | null = null;
-  let currentUserId: string | null = null;
+  const currentUserId: string | null = socket.data.authUserId || null;
 
   // 1. User registers their personal notification channel
   socket.on("user:register", (data: { userId: string }) => {
-    if (!data?.userId) return;
-    currentUserId = data.userId;
-    socket.join(`user:${data.userId}`);
+    if (!currentUserId || data?.userId !== currentUserId) return;
+    socket.join(`user:${currentUserId}`);
+    const pendingSignals = (pendingCallSignals.get(currentUserId) || []).filter((pending) => Date.now() - pending.createdAt < 45000);
+    pendingCallSignals.set(currentUserId, pendingSignals);
+    for (const pending of pendingSignals) {
+      socket.emit("call:signal", pending);
+    }
   });
 
   // 2. Join a trip room for multiplayer collaboration
@@ -222,9 +259,8 @@ io.on("connection", (socket: Socket) => {
         role?: string;
       };
     }) => {
-      if (!data?.tripId || !data?.user?.id) return;
+      if (!data?.tripId || !data?.user?.id || data.user.id !== currentUserId) return;
       currentTripId = data.tripId;
-      currentUserId = data.user.id;
 
       socket.join(`trip:${data.tripId}`);
       socket.join(`user:${data.user.id}`);
@@ -605,45 +641,75 @@ io.on("connection", (socket: Socket) => {
   });
 
   // 14. World of Travellers Global Chat Room
-  socket.on("community:join", (userData?: { id?: string; name?: string }) => {
+  socket.on("community:join", (_userData?: { id?: string; name?: string }) => {
     socket.join("community:global");
     socket.emit("community:history", globalCommunityChatMessages);
   });
 
   socket.on(
     "community:send-message",
-    (msgData: {
+    async (msgData: {
       text: string;
       user: { id: string; name: string; avatar?: string; tier?: string };
+      message?: { id: string; senderId: string; senderName: string; senderAvatar?: string; senderTier?: string; text: string; createdAt: string };
+      mentionedUserIds?: string[];
     }) => {
-      if (!msgData?.text?.trim()) return;
+      if (!currentUserId || !msgData?.text?.trim()) return;
 
+      const saved = msgData.message;
+      if (!saved || saved.senderId !== currentUserId || saved.text !== msgData.text.trim()) return;
+      const persisted = await prisma.$queryRawUnsafe<Array<{ id: string }>>(
+        `SELECT id FROM live_chat_messages WHERE id = $1 AND "conversationKey" = 'world' AND "senderId" = $2 LIMIT 1`,
+        saved.id, currentUserId
+      );
+      if (!persisted.length) return;
       const newMsg: CommunityChatMessage = {
-        id: `msg-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        id: saved?.id || `msg-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
         text: msgData.text.trim(),
         user: {
-          id: msgData.user?.id || "guest",
-          name: msgData.user?.name || "Fellow Traveler",
+          id: saved?.senderId || msgData.user?.id || "guest",
+          name: saved?.senderName || msgData.user?.name || "Fellow Traveler",
           avatar:
-            msgData.user?.avatar ||
+            saved?.senderAvatar || msgData.user?.avatar ||
             `https://api.dicebear.com/7.x/avataaars/svg?seed=${msgData.user?.id || "guest"}`,
-          tier: msgData.user?.tier || "FREE",
+          tier: saved?.senderTier || msgData.user?.tier || "FREE",
         },
-        createdAt: new Date().toISOString(),
+        createdAt: saved?.createdAt || new Date().toISOString(),
       };
 
-      globalCommunityChatMessages.push(newMsg);
-      if (globalCommunityChatMessages.length > 200) {
-        globalCommunityChatMessages.shift();
-      }
-
       io.to("community:global").emit("community:new-message", newMsg);
+      const handles = [...new Set([...newMsg.text.matchAll(/@([a-z0-9_]{2,32})/gi)].map((match) => match[1].toLowerCase()))];
+      const mentionedUsers = handles.length && msgData.mentionedUserIds?.length
+        ? await prisma.user.findMany({
+            where: {
+              id: { in: msgData.mentionedUserIds },
+              OR: handles.flatMap((handle) => [{ username: handle }, { email: { startsWith: `${handle}@` } }]),
+            },
+            select: { id: true },
+          })
+        : [];
+      for (const { id: targetId } of mentionedUsers) {
+        if (targetId !== newMsg.user.id) {
+          io.to(`user:${targetId}`).emit("notification:new", {
+            type: "MENTION", title: "You were mentioned in World of Travellers",
+            message: `${newMsg.user.name} mentioned you: ${newMsg.text.slice(0, 120)}`,
+            linkUrl: "/dashboard/chat", data: { messageId: newMsg.id, room: "world" },
+          });
+        }
+      }
     }
   );
 
   // 15. P2P Direct Traveler-to-Traveler Chat
-  socket.on("p2p:join", (data: { userId: string; peerId: string }) => {
-    if (!data?.userId || !data?.peerId) return;
+  socket.on("p2p:join", async (data: { userId: string; peerId: string }) => {
+    if (!data?.userId || !data?.peerId || data.userId !== currentUserId) return;
+    try {
+      const rows = await prisma.$queryRawUnsafe<Array<{ status: string }>>(
+        `SELECT status FROM chat_invites WHERE (("senderId" = $1 AND "recipientId" = $2) OR ("senderId" = $2 AND "recipientId" = $1)) ORDER BY "updatedAt" DESC LIMIT 1`,
+        data.userId, data.peerId
+      );
+      if (rows[0]?.status !== "ACCEPTED") return;
+    } catch { return; }
     const conversationKey = getP2PConversationKey(data.userId, data.peerId);
     const roomName = `p2p:${conversationKey}`;
     socket.join(roomName);
@@ -658,7 +724,7 @@ io.on("connection", (socket: Socket) => {
 
   socket.on(
     "p2p:send-message",
-    (msgData: {
+    async (msgData: {
       senderId: string;
       senderName: string;
       senderAvatar?: string;
@@ -667,13 +733,20 @@ io.on("connection", (socket: Socket) => {
       recipientName?: string;
       recipientAvatar?: string;
       text: string;
+      message?: P2PDirectMessage;
     }) => {
       if (!msgData?.text?.trim() || !msgData?.senderId || !msgData?.recipientId) return;
+      if (!currentUserId || msgData.senderId !== currentUserId || !msgData.message || msgData.message.senderId !== currentUserId || msgData.message.recipientId !== msgData.recipientId) return;
 
       const conversationKey = getP2PConversationKey(msgData.senderId, msgData.recipientId);
+      const persisted = await prisma.$queryRawUnsafe<Array<{ id: string }>>(
+        `SELECT id FROM live_chat_messages WHERE id = $1 AND "conversationKey" = $2 AND "senderId" = $3 AND "recipientId" = $4 LIMIT 1`,
+        msgData.message.id, `p2p:${conversationKey}`, currentUserId, msgData.recipientId
+      );
+      if (!persisted.length) return;
       const roomName = `p2p:${conversationKey}`;
 
-      const newMsg: P2PDirectMessage = {
+      const newMsg: P2PDirectMessage = msgData.message || {
         id: `p2p-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
         senderId: msgData.senderId,
         senderName: msgData.senderName,
@@ -710,11 +783,69 @@ io.on("connection", (socket: Socket) => {
         text: msgData.text.trim(),
         conversationKey,
       });
+      io.to(`user:${msgData.recipientId}`).emit("notification:new", {
+        type: "MESSAGE", title: `Message from ${newMsg.senderName}`,
+        message: newMsg.text.slice(0, 160),
+        linkUrl: `/dashboard/chat?peer=${encodeURIComponent(newMsg.senderId)}`,
+        data: { messageId: newMsg.id, peerId: newMsg.senderId },
+      });
     }
   );
 
+  socket.on("social:request", async (data: { recipientId: string; senderId: string; senderName: string; inviteId?: string }) => {
+    if (!data?.recipientId || !data.senderId || data.senderId !== currentUserId) return;
+    const pendingInvite = await prisma.$queryRawUnsafe<Array<{ id: string }>>(
+      `SELECT id FROM chat_invites WHERE "senderId" = $1 AND "recipientId" = $2 AND status = 'PENDING' LIMIT 1`,
+      currentUserId, data.recipientId
+    );
+    if (!pendingInvite.length) return;
+    io.to(`user:${data.recipientId}`).emit("notification:new", {
+      type: "INVITE", title: "New Chat Invite", message: `${data.senderName || "A traveler"} sent you a chat connection invite`,
+      linkUrl: "/dashboard/chat", data: { inviteId: data.inviteId, senderId: data.senderId },
+    });
+    io.to(`user:${data.recipientId}`).emit("social:updated");
+  });
+
+  socket.on("social:updated", (data: { userIds?: string[] } = {}) => {
+    for (const userId of data.userIds || []) io.to(`user:${userId}`).emit("social:updated");
+  });
+
+  // One-to-one WebRTC signaling. Only accepted chat connections can signal.
+  socket.on("call:signal", async (data: { toUserId: string; kind: string; payload?: unknown }) => {
+    if (!currentUserId || !data?.toUserId || data.toUserId === currentUserId) return;
+    try {
+      const pairKey = getCallPairKey(currentUserId, data.toUserId);
+      if (!activeCallPairs.has(pairKey) || Date.now() - (activeCallPairs.get(pairKey) || 0) > 4 * 60 * 60 * 1000) {
+        const rows = await prisma.$queryRawUnsafe<Array<{ status: string }>>(
+          `SELECT status FROM chat_invites WHERE (("senderId" = $1 AND "recipientId" = $2) OR ("senderId" = $2 AND "recipientId" = $1)) ORDER BY "updatedAt" DESC LIMIT 1`,
+          currentUserId, data.toUserId
+        );
+        if (rows[0]?.status !== "ACCEPTED") return;
+        if (data.kind === "invite") activeCallPairs.set(pairKey, Date.now());
+      }
+      activeCallPairs.set(pairKey, Date.now());
+      const signal: PendingCallSignal = { fromUserId: currentUserId, kind: data.kind, payload: data.payload, createdAt: Date.now() };
+      if (data.kind === "invite" || data.kind === "offer") {
+        const pending = pendingCallSignals.get(data.toUserId) || [];
+        if (!pending.some((entry) => entry.fromUserId === currentUserId && entry.kind === data.kind)) pending.push(signal);
+        pendingCallSignals.set(data.toUserId, pending);
+      }
+      if (data.kind === "accepted" || data.kind === "declined" || data.kind === "ended") {
+        for (const userId of [currentUserId, data.toUserId]) {
+          pendingCallSignals.set(userId, (pendingCallSignals.get(userId) || []).filter(
+            (entry) => entry.fromUserId !== currentUserId && entry.fromUserId !== data.toUserId
+          ));
+        }
+      }
+      if (data.kind === "declined" || data.kind === "ended") activeCallPairs.delete(pairKey);
+      io.to(`user:${data.toUserId}`).emit("call:signal", signal);
+    } catch (error) {
+      console.warn("[socket] Call signaling rejected:", error);
+    }
+  });
+
   socket.on("p2p:get-conversations", (data: { userId: string }) => {
-    if (!data?.userId) return;
+    if (!data?.userId || data.userId !== currentUserId) return;
     const recentConversations: Array<{
       conversationKey: string;
       peerId: string;

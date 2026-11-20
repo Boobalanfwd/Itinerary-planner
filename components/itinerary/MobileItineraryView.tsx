@@ -45,8 +45,6 @@ import { RefinementBar } from "./RefinementBar";
 import { toast } from "sonner";
 import * as Flags from "country-flag-icons/react/3x2";
 import { getCountryCode } from "@/lib/country-code";
-import { useSubscription } from "@/app/hooks/useSubscription";
-import { UpgradeModal } from "@/app/components/ui/UpgradeModal";
 import { useUndoableActions } from "@/app/hooks/useUndoableActions";
 
 interface MobileItineraryViewProps {
@@ -86,13 +84,14 @@ export function MobileItineraryView({
   onBack,
   readOnly = false,
 }: MobileItineraryViewProps) {
-  const { canUseFeature, tier } = useSubscription();
-  const [itinerary, setItinerary] = useState<ItineraryData>(initialData);
+  const [itinerary, setItinerary] = useState<ItineraryData>({
+    ...initialData,
+    days: Array.isArray(initialData.days) ? initialData.days : [],
+  });
   const [selectedDayNumber, setSelectedDayNumber] = useState<number>(1);
   const [activeTab, setActiveTab] = useState<"timeline" | "map" | "packing" | "budget">("timeline");
   const [selectedActivity, setSelectedActivity] = useState<Activity | null>(null);
   const [isMapOverlayOpen, setIsMapOverlayOpen] = useState(false);
-  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const { scheduleAction } = useUndoableActions();
 
   // Dialog states
@@ -372,13 +371,6 @@ export function MobileItineraryView({
       return;
     }
 
-    const isShared = readOnly || Boolean(itinerary.shareToken);
-    const isDev = process.env.NODE_ENV === "development";
-    if (!isShared && !isDev && !canUseFeature("pdfExport")) {
-      setShowUpgradeModal(true);
-      return;
-    }
-
     toast.info("Generating high-resolution PDF itinerary...", { duration: 3000 });
     const targetId = itinerary.shareToken || itinerary.id;
     window.open(`/api/itineraries/${targetId}/export/pdf`, "_blank");
@@ -617,6 +609,18 @@ export function MobileItineraryView({
           </div>
         )}
 
+        {activeTab === "timeline" && !activeDay && (
+          <div className="rounded-3xl border border-dashed border-border/80 bg-card px-6 py-12 text-center">
+            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+              <Compass className="h-6 w-6" />
+            </div>
+            <h2 className="text-lg font-bold text-foreground">No itinerary days yet</h2>
+            <p className="mx-auto mt-2 max-w-sm text-sm text-muted-foreground">
+              This trip doesn’t have any days or stops to show yet. Add itinerary details to start planning.
+            </p>
+          </div>
+        )}
+
         {/* ── Map Tab ───────────────────────────────────────────────────── */}
         {activeTab === "map" && (
           <div className="h-[calc(100vh-180px)] rounded-3xl overflow-hidden border border-border/80 shadow-soft bg-card relative">
@@ -827,13 +831,6 @@ export function MobileItineraryView({
           onRegenerated={handleDayRegenerated}
         />
       )}
-      {/* ── Upgrade Modal for Free tier PDF gate ───────────────────────── */}
-      <UpgradeModal
-        isOpen={showUpgradeModal}
-        onClose={() => setShowUpgradeModal(false)}
-        feature="PDF Export"
-        currentPlan={tier}
-      />
     </div>
   );
 }

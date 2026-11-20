@@ -1,12 +1,12 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
-import { User, MapPin, Globe, Calendar, Edit, Camera, Sparkles, Check, Crown } from "lucide-react";
-import Link from "next/link";
+import { MapPin, Globe, Calendar, Edit, Plane, Sparkles } from "lucide-react";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
 
 export default function ProfilePage() {
   const { data: session, status } = useSession();
@@ -18,18 +18,15 @@ export default function ProfilePage() {
     location: "",
     website: "",
     travelStyle: [] as string[],
-    subscriptionTier: "FREE",
+    coverImage: "",
   });
+  const [profileStats, setProfileStats] = useState({ trips: 0, countries: 0, cities: 0 });
+  const [profileLoading, setProfileLoading] = useState(true);
 
-  useEffect(() => {
-    if (status === "authenticated" && session?.user?.email) {
-      fetchProfile();
-    }
-  }, [status]);
-
-  const fetchProfile = async () => {
+  const fetchProfile = useCallback(async () => {
     try {
       const username = session?.user?.email?.split("@")[0];
+      if (!username) return;
       const response = await fetch(`/api/users/${username}`);
       const data = await response.json();
 
@@ -39,15 +36,32 @@ export default function ProfilePage() {
           location: data.profile.location || "",
           website: data.profile.website || "",
           travelStyle: data.profile.travelStyle || [],
-          subscriptionTier: data.profile.subscriptionTier || "FREE",
+          coverImage: data.profile.coverImage || "",
+        });
+        setProfileStats({
+          trips: data.profile.totalTrips ?? data.profile.itineraries?.length ?? 0,
+          countries: data.profile.visitedCountries ?? 0,
+          cities: data.profile.destinationsExplored ?? new Set((data.profile.itineraries || []).map((trip: { destination: string }) => trip.destination)).size,
         });
       }
     } catch (error) {
       console.error("Fetch profile error:", error);
+    } finally {
+      setProfileLoading(false);
     }
-  };
+  }, [session?.user?.email]);
+
+  useEffect(() => {
+    if (status === "authenticated" && session?.user?.email) fetchProfile();
+  }, [status, session?.user?.email, fetchProfile]);
 
   const handleSave = async () => {
+    for (const [label, value] of [["Website", profile.website], ["Cover image", profile.coverImage]] as const) {
+      if (value && !/^https?:\/\//i.test(value)) {
+        toast.error(`${label} must start with http:// or https://`);
+        return;
+      }
+    }
     setSaving(true);
     try {
       const username = session?.user?.email?.split("@")[0];
@@ -60,10 +74,14 @@ export default function ProfilePage() {
       const data = await response.json();
 
       if (data.success) {
+        toast.success("Your profile has been updated.");
         setEditing(false);
+      } else {
+        toast.error(data.error || "Could not save your profile.");
       }
     } catch (error) {
       console.error("Save profile error:", error);
+      toast.error("Could not save your profile. Please try again.");
     } finally {
       setSaving(false);
     }
@@ -93,9 +111,9 @@ export default function ProfilePage() {
   ];
 
   const stats = [
-    { label: "Total Trips", value: "0", icon: Calendar },
-    { label: "Countries Visited", value: "0", icon: Globe },
-    { label: "Cities Explored", value: "0", icon: MapPin },
+    { label: "Total Trips", value: profileStats.trips, icon: Calendar },
+    { label: "Countries Visited", value: profileStats.countries, icon: Globe },
+    { label: "Destinations Explored", value: profileStats.cities, icon: MapPin },
   ];
 
   return (
@@ -109,13 +127,8 @@ export default function ProfilePage() {
         >
           {/* Cover Image Banner */}
           <div className="h-44 sm:h-52 bg-gradient-to-r from-emerald-600 via-teal-600 to-primary rounded-3xl relative overflow-hidden shadow-soft">
+            {profile.coverImage && <img src={profile.coverImage} alt="Profile cover" className="absolute inset-0 w-full h-full object-cover" />}
             <div className="absolute inset-0 bg-black/10 backdrop-blur-[1px]" />
-            <button
-              aria-label="Change cover image"
-              className="absolute top-4 right-4 p-2.5 bg-black/40 hover:bg-black/60 backdrop-blur-md rounded-full text-white transition-colors"
-            >
-              <Camera className="w-4 h-4" />
-            </button>
           </div>
 
           {/* Profile Picture */}
@@ -126,12 +139,6 @@ export default function ProfilePage() {
                 alt={session?.user?.name || "User"}
                 className="w-28 h-28 sm:w-32 sm:h-32 rounded-full border-4 border-card bg-muted object-cover shadow-lg"
               />
-              <button
-                aria-label="Change avatar"
-                className="absolute bottom-1 right-1 p-2 bg-primary hover:bg-primary/90 rounded-full text-primary-foreground shadow-md transition-colors"
-              >
-                <Camera className="w-3.5 h-3.5" />
-              </button>
             </div>
           </div>
         </motion.div>
@@ -149,35 +156,19 @@ export default function ProfilePage() {
                 <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground font-serif">
                   {session?.user?.name || "Traveler"}
                 </h1>
-                {profile.subscriptionTier && profile.subscriptionTier !== "FREE" ? (
-                  <span className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full text-xs font-bold bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-soft">
-                    <Crown className="w-3.5 h-3.5" />
-                    {profile.subscriptionTier} TRAVELER
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-muted text-muted-foreground border border-border/80">
-                    Free Explorer
-                  </span>
-                )}
               </div>
               <div className="flex items-center gap-3 mt-1">
                 <p className="text-sm text-muted-foreground font-mono">
                   @{session?.user?.email?.split("@")[0] || "user"}
                 </p>
-                {profile.subscriptionTier === "FREE" && (
-                  <Link
-                    href="/dashboard/pricing"
-                    className="text-xs font-bold text-primary hover:underline flex items-center gap-1"
-                  >
-                    <span>Upgrade to Pro</span>
-                    <Sparkles className="w-3 h-3 text-amber-500" />
-                  </Link>
-                )}
               </div>
             </div>
             <Button
               variant={editing ? "outline" : "default"}
-              onClick={() => setEditing(!editing)}
+              onClick={() => {
+                if (editing) fetchProfile();
+                setEditing((value) => !value);
+              }}
               className="rounded-full px-5 font-semibold text-xs gap-2 self-start sm:self-auto shadow-sm"
             >
               <Edit className="w-3.5 h-3.5" />
@@ -198,8 +189,16 @@ export default function ProfilePage() {
                   }
                   placeholder="Tell us about your travel passions..."
                   rows={3}
+                  maxLength={300}
                   className="w-full p-3.5 bg-background border border-border/80 rounded-2xl text-foreground placeholder:text-muted-foreground/60 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all"
                 />
+                <p className="text-right text-[11px] text-muted-foreground mt-1">{profile.bio.length}/300</p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">Cover image URL</label>
+                <input type="url" value={profile.coverImage} onChange={(e) => setProfile({ ...profile, coverImage: e.target.value })} placeholder="https://…" className="w-full p-3.5 bg-background border border-border/80 rounded-2xl text-foreground placeholder:text-muted-foreground/60 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40" />
+                <p className="text-[11px] text-muted-foreground mt-1">Paste a direct image link. Leave blank to use the default cover.</p>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -277,7 +276,7 @@ export default function ProfilePage() {
             </div>
           ) : (
             <div className="p-6 sm:p-8 bg-card/85 backdrop-blur-sm border border-border/80 rounded-3xl shadow-soft space-y-4">
-              {profile.bio ? (
+              {profileLoading ? <p className="text-sm text-muted-foreground">Loading your travel profile…</p> : profile.bio ? (
                 <p className="text-sm text-foreground/90 leading-relaxed">
                   {profile.bio}
                 </p>
@@ -349,6 +348,10 @@ export default function ProfilePage() {
             </div>
           ))}
         </motion.div>
+        <div className="rounded-3xl border border-border/80 bg-card/70 p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex gap-3 items-center"><div className="w-10 h-10 rounded-2xl bg-primary/10 text-primary grid place-items-center"><Plane className="w-5 h-5" /></div><div><p className="font-semibold text-sm">Ready for your next trip?</p><p className="text-xs text-muted-foreground mt-1">Build a personalized itinerary around your travel style.</p></div></div>
+          <Button onClick={() => router.push("/dashboard/create")} className="rounded-full gap-2"><Sparkles className="w-4 h-4" /> Plan a trip</Button>
+        </div>
       </div>
     </div>
   );

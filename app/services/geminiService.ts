@@ -219,7 +219,7 @@ class GeminiServiceClass {
       temperature?: number;
     } = {}
   ): Promise<{ itinerary: AiItinerary; usage: TokenUsage }> {
-    const { maxRetries = 2, temperature = 0.7 } = options;
+    const { maxRetries = 1, temperature = 0.7 } = options;
 
     // Sanitise user input — treat as data, not instructions
     const sanitisedRequest = this.sanitiseUserInput(userRequest);
@@ -252,7 +252,7 @@ class GeminiServiceClass {
               temperature,
               topK: 40,
               topP: 0.95,
-              maxOutputTokens: 8192,
+              maxOutputTokens: 6144,
               responseMimeType: "application/json",
               responseSchema: GEMINI_RESPONSE_SCHEMA,
             },

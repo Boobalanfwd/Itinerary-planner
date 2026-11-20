@@ -106,7 +106,40 @@ export async function POST(request: NextRequest) {
       text,
     });
 
-    return NextResponse.json({ success: true, message: saved });
+    const mentions = [...new Set([...text.matchAll(/@([a-z0-9_]{2,32})/gi)].map((match) => match[1].toLowerCase()))];
+    let mentionedUsers: { id: string }[] = [];
+    if (mentions.length) {
+      mentionedUsers = await prisma.user.findMany({
+        where: {
+          OR: mentions.flatMap((handle) => [
+            { username: handle },
+            { email: { startsWith: `${handle}@` } },
+          ]),
+          id: { not: senderId },
+        },
+        select: { id: true },
+      });
+      if (mentionedUsers.length) {
+        const sender = await prisma.user.findUnique({ where: { id: senderId }, select: { name: true } });
+        try {
+          await prisma.notification.createMany({
+            data: mentionedUsers.map((target) => ({
+              userId: target.id,
+              actorId: senderId,
+              type: "MENTION",
+              title: "You were mentioned in World of Travellers",
+              message: `${sender?.name || "A traveler"} mentioned you: ${text.slice(0, 120)}`,
+              linkUrl: "/dashboard/chat",
+              data: { messageId: saved.id, room: "world" },
+            })),
+          });
+        } catch (error) {
+          console.warn("Could not persist world-chat mention notifications:", error);
+        }
+      }
+    }
+
+    return NextResponse.json({ success: true, message: saved, mentionedUserIds: mentionedUsers.map((user) => user.id) });
   } catch (error: any) {
     console.error("Error sending world chat message:", error);
     return NextResponse.json(

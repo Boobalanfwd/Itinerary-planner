@@ -159,7 +159,7 @@ export async function sendChatInvite(senderId: string, recipientId: string, mess
         type: "INVITE",
         title: "New Chat Invite",
         message: `${sender?.name || "A traveler"} sent you a chat connection invite`,
-        linkUrl: "/dashboard/chat",
+        linkUrl: "/dashboard/chat?tab=requests",
         data: { inviteId, senderId },
       },
     });

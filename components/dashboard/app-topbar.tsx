@@ -4,7 +4,7 @@ import * as React from "react"
 import { useMemo } from "react"
 import Link from "next/link"
 import { useSession, signOut } from "next-auth/react"
-import { Search, User, Settings, LayoutDashboard, Compass, LogOut, CreditCard } from "lucide-react"
+import { Search, User, Settings, LayoutDashboard, Compass, LogOut } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { NotificationsPopover } from "@/components/dashboard/notifications-popover"
@@ -122,12 +122,6 @@ export function AppTopbar({ onSearchClick }: AppTopbarProps) {
               <Link href="/dashboard/profile" className="flex items-center gap-2 cursor-pointer rounded-xl py-2">
                 <User className="size-4 text-primary" />
                 <span>Profile</span>
-              </Link>
-            </DropdownMenuItem>
-            <DropdownMenuItem asChild>
-              <Link href="/dashboard/pricing" className="flex items-center gap-2 cursor-pointer rounded-xl py-2">
-                <CreditCard className="size-4 text-emerald-500" />
-                <span>Pricing & Plans</span>
               </Link>
             </DropdownMenuItem>
             <DropdownMenuItem asChild>

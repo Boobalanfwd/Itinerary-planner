@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useEffect } from "react";
 import { signOut } from "next-auth/react";
-import { User, LogOut, Crown, Zap, Settings, CreditCard } from "lucide-react";
+import { User, LogOut, Settings } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 
@@ -12,12 +12,10 @@ interface UserProfileDropdownProps {
     email?: string | null;
     image?: string | null;
   };
-  subscriptionTier: "FREE" | "PRO" | "PREMIUM";
 }
 
 export const UserProfileDropdown: React.FC<UserProfileDropdownProps> = ({
   user,
-  subscriptionTier,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -37,36 +35,6 @@ export const UserProfileDropdown: React.FC<UserProfileDropdownProps> = ({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const getTierBadge = () => {
-    switch (subscriptionTier) {
-      case "PREMIUM":
-        return {
-          icon: <Crown className="w-3 h-3" />,
-          label: "Premium",
-          gradient: "from-purple-500 to-pink-600",
-          bg: "bg-purple-500/10",
-          border: "border-purple-500/30",
-        };
-      case "PRO":
-        return {
-          icon: <Zap className="w-3 h-3" />,
-          label: "Pro",
-          gradient: "from-emerald-500 to-cyan-600",
-          bg: "bg-emerald-500/10",
-          border: "border-emerald-500/30",
-        };
-      default:
-        return {
-          icon: <User className="w-3 h-3" />,
-          label: "Free",
-          gradient: "from-gray-500 to-gray-600",
-          bg: "bg-gray-500/10",
-          border: "border-gray-500/30",
-        };
-    }
-  };
-
-  const tierBadge = getTierBadge();
   const initials = user.name
     ? user.name
         .split(" ")
@@ -96,10 +64,6 @@ export const UserProfileDropdown: React.FC<UserProfileDropdownProps> = ({
               initials
             )}
           </div>
-          {/* Tier indicator dot */}
-          <div
-            className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-gradient-to-r ${tierBadge.gradient} border-2 border-black`}
-          />
         </div>
 
         {/* Name (hidden on mobile) */}
@@ -142,21 +106,6 @@ export const UserProfileDropdown: React.FC<UserProfileDropdownProps> = ({
                 </div>
               </div>
 
-              {/* Subscription Badge */}
-              <div
-                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full ${tierBadge.bg} border ${tierBadge.border}`}
-              >
-                <div
-                  className={`bg-gradient-to-r ${tierBadge.gradient} bg-clip-text text-transparent`}
-                >
-                  {tierBadge.icon}
-                </div>
-                <span
-                  className={`text-xs font-semibold bg-gradient-to-r ${tierBadge.gradient} bg-clip-text text-transparent`}
-                >
-                  {tierBadge.label} Plan
-                </span>
-              </div>
             </div>
 
             {/* Menu Items */}
@@ -170,14 +119,6 @@ export const UserProfileDropdown: React.FC<UserProfileDropdownProps> = ({
                 Dashboard
               </Link>
 
-              <Link
-                href="/pricing"
-                onClick={() => setIsOpen(false)}
-                className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-gray-300 hover:bg-white/10 hover:text-white transition-colors"
-              >
-                <CreditCard className="w-4 h-4" />
-                Subscription
-              </Link>
 
               <Link
                 href="/settings"

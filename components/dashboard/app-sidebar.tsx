@@ -16,10 +16,8 @@ import {
   LogOut,
   Globe,
   PanelLeftClose,
-  CreditCard,
   User,
   Calendar,
-  Receipt,
   MessageCircle,
 } from "lucide-react"
 import * as Flags from "country-flag-icons/react/3x2"
@@ -43,7 +41,6 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { ItineraryData } from "@/app/components/types"
 import { getCountryCode } from "@/lib/country-code"
 import { cn } from "@/lib/utils"
-import { useSubscription } from "@/app/hooks/useSubscription"
 
 interface AppSidebarProps {
   initialTrips?: ItineraryData[]
@@ -52,7 +49,6 @@ interface AppSidebarProps {
 export function AppSidebar({ initialTrips = [] }: AppSidebarProps) {
   const pathname = usePathname()
   const { data: session } = useSession()
-  const { tier } = useSubscription()
   const { state, toggleSidebar } = useSidebar()
   const isCollapsed = state === "collapsed"
 
@@ -165,14 +161,9 @@ export function AppSidebar({ initialTrips = [] }: AppSidebarProps) {
                     <span className="text-sm font-bold text-sidebar-foreground truncate">
                       {session?.user?.name || "Traveler"}
                     </span>
-                    {tier && tier !== "FREE" && (
-                      <span className="text-[9px] font-extrabold px-1.5 py-0.2 rounded-full bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-2xs shrink-0">
-                        {tier}
-                      </span>
-                    )}
                   </div>
                   <span className="text-xs text-muted-foreground truncate">
-                    {tier && tier !== "FREE" ? `${tier} Traveler` : session?.user?.email || "Pro Traveler"}
+                    {session?.user?.email || "Traveler"}
                   </span>
                 </div>
               </div>
@@ -465,63 +456,11 @@ export function AppSidebar({ initialTrips = [] }: AppSidebarProps) {
         <SidebarGroup className="p-0">
           {!isCollapsed && (
             <SidebarGroupLabel className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground px-3 mb-1">
-              ACCOUNT & BILLING
+              ACCOUNT
             </SidebarGroupLabel>
           )}
           <SidebarGroupContent>
             <SidebarMenu>
-              <SidebarMenuItem className={cn(isCollapsed && "flex justify-center")}>
-                <SidebarMenuButton
-                  asChild
-                  isActive={pathname === "/dashboard/pricing"}
-                  tooltip="Pricing & Plans"
-                  className={cn(
-                    "rounded-xl text-sm font-medium transition-colors",
-                    isCollapsed ? "size-9 p-0 justify-center mx-auto" : "px-3 py-2",
-                    pathname === "/dashboard/pricing"
-                      ? "bg-sidebar-accent text-sidebar-foreground font-bold shadow-soft-xs"
-                      : "text-sidebar-foreground/80 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground"
-                  )}
-                >
-                  <Link
-                    href="/dashboard/pricing"
-                    className={cn(
-                      "flex items-center",
-                      isCollapsed ? "justify-center w-full" : "gap-2.5"
-                    )}
-                  >
-                    <CreditCard className="size-4 text-emerald-500 shrink-0" />
-                    {!isCollapsed && <span>Pricing & Plans</span>}
-                  </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-
-              <SidebarMenuItem className={cn(isCollapsed && "flex justify-center")}>
-                <SidebarMenuButton
-                  asChild
-                  isActive={pathname === "/dashboard/billing"}
-                  tooltip="Billing"
-                  className={cn(
-                    "rounded-xl text-sm font-medium transition-colors",
-                    isCollapsed ? "size-9 p-0 justify-center mx-auto" : "px-3 py-2",
-                    pathname === "/dashboard/billing"
-                      ? "bg-sidebar-accent text-sidebar-foreground font-bold shadow-soft-xs"
-                      : "text-sidebar-foreground/80 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground"
-                  )}
-                >
-                  <Link
-                    href="/dashboard/billing"
-                    className={cn(
-                      "flex items-center",
-                      isCollapsed ? "justify-center w-full" : "gap-2.5"
-                    )}
-                  >
-                    <Receipt className="size-4 text-blue-500 shrink-0" />
-                    {!isCollapsed && <span>Billing</span>}
-                  </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-
               <SidebarMenuItem className={cn(isCollapsed && "flex justify-center")}>
                 <SidebarMenuButton
                   asChild

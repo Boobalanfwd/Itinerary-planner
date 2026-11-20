@@ -31,7 +31,7 @@ const FALLBACK_DESTINATION_IMAGES: Record<string, string> = {
 /**
  * Get fallback image based on destination text.
  */
-function getCuratedFallback(destination: string): string {
+export function getCuratedFallback(destination: string): string {
   const norm = destination.toLowerCase();
   for (const [key, url] of Object.entries(FALLBACK_DESTINATION_IMAGES)) {
     if (key !== "default" && norm.includes(key)) {

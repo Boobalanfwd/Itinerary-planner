@@ -78,8 +78,8 @@ export async function PATCH(req: NextRequest) {
     }
 
     if (notificationId) {
-      await prisma.notification.update({
-        where: { id: notificationId },
+      await prisma.notification.updateMany({
+        where: { id: notificationId, userId: currentUser.id },
         data: { isRead: true },
       });
       return NextResponse.json({ success: true, message: "Notification marked as read" });

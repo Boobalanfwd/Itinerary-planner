@@ -71,11 +71,6 @@ export function LandingFooter() {
                 </Link>
               </li>
               <li>
-                <Link href="/pricing" className="hover:text-foreground transition-colors">
-                  Subscription Plans
-                </Link>
-              </li>
-              <li>
                 <Link href="/dashboard/create" className="hover:text-foreground transition-colors">
                   Trip Creation Studio
                 </Link>

@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/lib/auth";
 import prisma from "@/lib/prisma";
-import { hasFeatureAccess } from "@/app/lib/subscriptionService";
 import { generateItineraryPDFBuffer, getItineraryPDFFilename } from "@/app/lib/pdfService";
 import type { PDFItineraryData } from "@/components/itinerary/pdf/PDFCoverPage";
 import * as Sentry from "@sentry/nextjs";
@@ -170,7 +169,7 @@ const DEMO_DEV_ITINERARY: PDFItineraryData = {
  * Generates and downloads a branded, high-resolution PDF itinerary.
  * - In development mode: Allows instant testing with zero authentication or paywall blocks.
  * - Supports sample preview via /api/itineraries/sample/export/pdf?inline=1
- * - In production: Gated behind PRO/PREMIUM plan check for private trips.
+ * - Available to all itinerary owners and public share links.
  */
 export async function GET(
   req: NextRequest,
@@ -273,22 +272,6 @@ export async function GET(
         return NextResponse.json(
           { success: false, error: "Authentication required to export this itinerary" },
           { status: 401 }
-        );
-      }
-    }
-
-    // Subscription Tier Gate: Check if user has pdfExport feature
-    // In dev mode, or on shared public links, allow direct export testing
-    if (session?.user?.id && !isSharedOrPublic && !isDev) {
-      const hasPdfAccess = await hasFeatureAccess(session.user.id, "pdfExport");
-      if (!hasPdfAccess) {
-        return NextResponse.json(
-          {
-            success: false,
-            code: "UPGRADE_REQUIRED",
-            error: "PDF export is a PRO feature. Upgrade to export high-resolution PDFs.",
-          },
-          { status: 403 }
         );
       }
     }

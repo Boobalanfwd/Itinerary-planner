@@ -95,6 +95,7 @@ export function P2PChatRoom() {
     const s = io(socketUrl, {
       transports: ["websocket", "polling"],
       reconnectionAttempts: 5,
+      withCredentials: true,
     });
 
     s.on("connect", () => {

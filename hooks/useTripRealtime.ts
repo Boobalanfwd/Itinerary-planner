@@ -98,16 +98,17 @@ export function useTripRealtime({
     if (!tripId || !currentUser?.id) return;
 
     // Detect socket URL: hostname + port 3001
-    const socketHost =
-      typeof window !== "undefined"
+    const socketHost = process.env.NEXT_PUBLIC_SOCKET_URL ||
+      (typeof window !== "undefined"
         ? `${window.location.protocol}//${window.location.hostname}:3001`
-        : "http://localhost:3001";
+        : "http://localhost:3001");
 
     const socket = io(socketHost, {
       transports: ["websocket", "polling"],
       reconnectionAttempts: 8,
       reconnectionDelay: 1000,
       timeout: 10000,
+      withCredentials: true,
     });
 
     socketRef.current = socket;

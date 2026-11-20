@@ -54,8 +54,6 @@ import * as Flags from "country-flag-icons/react/3x2";
 import { getCountryCode } from "@/lib/country-code";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { MobileItineraryView } from "./MobileItineraryView";
-import { useSubscription } from "@/app/hooks/useSubscription";
-import { UpgradeModal } from "@/app/components/ui/UpgradeModal";
 import { useUndoableActions } from "@/app/hooks/useUndoableActions";
 
 interface SplitItineraryViewProps {
@@ -85,14 +83,15 @@ export function SplitItineraryView({
   readOnly = false,
 }: SplitItineraryViewProps) {
   const isMobile = useIsMobile();
-  const { canUseFeature, tier } = useSubscription();
-  const [itinerary, setItinerary] = useState<ItineraryData>(initialData);
+  const [itinerary, setItinerary] = useState<ItineraryData>({
+    ...initialData,
+    days: Array.isArray(initialData.days) ? initialData.days : [],
+  });
   const [selectedDayNumber, setSelectedDayNumber] = useState<number | null>(null);
   const [highlightedActivityId, setHighlightedActivityId] = useState<string | undefined>(undefined);
   const [activeMobileTab, setActiveMobileTab] = useState<"timeline" | "map" | "budget" | "packing">("timeline");
   const [activeLeftTab, setActiveLeftTab] = useState<"timeline" | "packing" | "budget">("timeline");
   const [isAuthPromptOpen, setIsAuthPromptOpen] = useState(false);
-  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const { scheduleAction } = useUndoableActions();
 
   // Dialog states
@@ -601,21 +600,14 @@ export function SplitItineraryView({
       return;
     }
 
-    const isShared = readOnly || Boolean(itinerary.shareToken);
-    const isDev = process.env.NODE_ENV === "development";
-    if (!isShared && !isDev && !canUseFeature("pdfExport")) {
-      setShowUpgradeModal(true);
-      return;
-    }
-
     toast.info("Generating high-resolution PDF itinerary...", { duration: 3000 });
     const targetId = itinerary.shareToken || itinerary.id;
     window.open(`/api/itineraries/${targetId}/export/pdf`, "_blank");
   };
 
   const filteredDays = useMemo(() => {
-    if (selectedDayNumber === null) return itinerary.days;
-    return itinerary.days.filter((d) => d.day === selectedDayNumber);
+    if (selectedDayNumber === null) return itinerary.days || [];
+    return (itinerary.days || []).filter((d) => d.day === selectedDayNumber);
   }, [itinerary.days, selectedDayNumber]);
 
   const countryCode = getCountryCode(itinerary.destination);
@@ -1063,7 +1055,21 @@ export function SplitItineraryView({
                 </div>
 
                 <div className="space-y-8">
-              {filteredDays.map((day) => {
+              {itinerary.days.length === 0 ? (
+                <div className="rounded-3xl border border-dashed border-border/80 bg-card/70 px-6 py-12 text-center">
+                  <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                    <ListOrdered className="h-6 w-6" />
+                  </div>
+                  <h3 className="text-lg font-bold text-foreground">No itinerary days yet</h3>
+                  <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
+                    This trip doesn’t have any days or stops to show yet. Add itinerary details to start planning.
+                  </p>
+                </div>
+              ) : filteredDays.length === 0 ? (
+                <div className="rounded-3xl border border-dashed border-border/80 bg-card/70 px-6 py-10 text-center text-sm text-muted-foreground">
+                  No days match this selection.
+                </div>
+              ) : filteredDays.map((day) => {
                 const dayColor = getDayColor(day.day);
                 const dayCost = day.activities?.reduce((sum, act) => sum + (act.cost || 0), 0) || 0;
                 const dayAnchorKey = `day:${day.id || `day-${day.day}`}`;
@@ -1075,8 +1081,8 @@ export function SplitItineraryView({
                     className="p-6 rounded-3xl bg-card/85 border border-border/80 shadow-soft space-y-5 backdrop-blur-sm"
                   >
                     {/* Day Header */}
-                    <div className="flex items-start justify-between gap-3 pb-3.5 border-b border-border/50">
-                      <div className="flex items-start gap-3.5">
+                    <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_auto] items-start gap-4 pb-3.5 border-b border-border/50">
+                      <div className="flex min-w-0 items-start gap-3.5">
                         <div
                           className="w-11 h-11 rounded-2xl flex flex-col items-center justify-center text-white font-black shadow-md flex-shrink-0"
                           style={{ backgroundColor: dayColor }}
@@ -1084,7 +1090,7 @@ export function SplitItineraryView({
                           <span className="text-[9px] uppercase tracking-wider leading-none">Day</span>
                           <span className="text-base leading-tight font-black">{day.day}</span>
                         </div>
-                        <div>
+                        <div className="min-w-0 flex-1">
                           <div className="flex flex-wrap items-center gap-2">
                             <h3 className="text-lg sm:text-xl font-bold tracking-tight text-foreground">
                               {day.title}
@@ -1098,17 +1104,16 @@ export function SplitItineraryView({
                           <p className="text-xs text-muted-foreground mt-0.5 font-mono">
                             {day.activities?.length || 0} stops planned • Est. ${dayCost}
                           </p>
+                          {day.description && (
+                            <p className="mt-2 max-w-3xl text-sm leading-relaxed text-muted-foreground">
+                              {day.description}
+                            </p>
+                          )}
                         </div>
                       </div>
 
-                    {day.description && (
-                      <p className="text-sm leading-relaxed text-muted-foreground">
-                        {day.description}
-                      </p>
-                    )}
-
                       {/* Day Action Buttons */}
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2 lg:justify-end">
                         {/* Day Comments Button */}
                         <Button
                           variant="outline"
@@ -1331,14 +1336,6 @@ export function SplitItineraryView({
           onAdded={(activity) => handleStopAdded(addingStopForDay.dayNumber, activity)}
         />
       )}
-      {/* ── Upgrade Modal for Free tier PDF gate ─────────────────────────────── */}
-      <UpgradeModal
-        isOpen={showUpgradeModal}
-        onClose={() => setShowUpgradeModal(false)}
-        feature="PDF Export"
-        currentPlan={tier}
-      />
-
       {/* ── Real-Time Multiplayer Cursors Overlay (Pillar 1.4) ──────────────── */}
       <LiveCursorsOverlay cursors={realtime.remoteCursors} />
 

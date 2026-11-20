@@ -5,10 +5,8 @@ import { authOptions } from "@/app/lib/auth";
 import { geminiService, GeminiService } from "@/app/services/geminiService";
 import { createItinerary } from "@/app/services/itineraryService";
 import { createJob, updateJobProgress, completeJob, failJob } from "@/lib/repositories/jobRepository";
-import { checkQuotaWithEdgeFallback } from "@/lib/edgeRateLimit";
 import { TripCreateSchema } from "@/schemas/trip";
 import { verifyAndEnrichItinerary } from "@/lib/maps/placeVerification";
-import { getForecastForDestination } from "@/lib/weather";
 import prisma from "@/lib/prisma";
 
 export async function POST(req: NextRequest) {
@@ -27,7 +25,7 @@ export async function POST(req: NextRequest) {
 
     const user = await prisma.user.findUnique({
       where: { email: session.user.email },
-      select: { id: true, email: true, subscriptionTier: true },
+      select: { id: true, email: true },
     });
 
     if (!user) {
@@ -52,36 +50,7 @@ export async function POST(req: NextRequest) {
 
     const data = parseResult.data;
 
-    // Check user rate limit / monthly quota (edge Redis with DB fallback)
-    const quota = await checkQuotaWithEdgeFallback(user.id, user.subscriptionTier);
-    if (!quota.allowed) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: `Monthly itinerary quota reached (${quota.limit} trips on ${quota.tier} plan). Upgrade for more itineraries.`,
-          code: "QUOTA_EXCEEDED",
-          quota,
-        },
-        { status: 429 }
-      );
-    }
-
-    // Fetch real-time Open-Meteo weather context if destination is specified
-    let weatherContext = "";
-    try {
-      if (data.destination) {
-        const forecast = await getForecastForDestination(data.destination);
-        if (forecast) {
-          const outlook = forecast.daily
-            .slice(0, 3)
-            .map((d) => `${d.dayName}: ${d.condition} (${d.tempMin}°C-${d.tempMax}°C)`)
-            .join(", ");
-          weatherContext = `Destination Weather Context: Currently ${forecast.current.condition} at ${forecast.current.temp}°C. Upcoming outlook: ${outlook}. If rainy/cold weather is expected, prioritize sheltered/indoor venues; for clear days, prioritize scenic outdoor spots.`;
-        }
-      }
-    } catch (wErr) {
-      console.warn("[generate] Weather context fetch skipped:", wErr);
-    }
+    // Avoid a separate weather request before acknowledging generation.
 
     // Synthesize structured prompt
     let prompt = data.prompt?.trim() || "";
@@ -146,7 +115,6 @@ export async function POST(req: NextRequest) {
         data.style ? `Additional Travel Style: ${data.style}` : null,
         data.notes ? `Special Requirements / Must-Sees: ${data.notes}` : null,
         data.startDate ? `Travel Dates: starting ${data.startDate}${data.endDate ? ` through ${data.endDate}` : ""}` : null,
-        weatherContext || null,
         `ANTI-HALLUCINATION ENFORCEMENT: Each 'place_name' must be an authentic, verifiable venue in ${dest}. Format as "Venue Name, ${destCity}". Never invent or borrow places from another country.`,
       ].filter(Boolean);
 
@@ -173,16 +141,7 @@ export async function POST(req: NextRequest) {
         await updateJobProgress(job.id, 75, "Structuring timeline and daily pacing...");
         const savedItinerary = await createItinerary(user.id, itinerary);
 
-        await updateJobProgress(job.id, 88, "Resolving locations & calculating travel times...");
-        try {
-          if (savedItinerary?.id) {
-            await verifyAndEnrichItinerary(savedItinerary.id);
-          }
-        } catch (enrichErr) {
-          console.warn("[generate] Place verification non-blocking notice:", enrichErr);
-        }
-
-        await updateJobProgress(job.id, 98, "Finalizing itinerary details & budget...");
+        await updateJobProgress(job.id, 92, "Saving your itinerary...");
         const estimatedCost = GeminiService.estimateCostUsd(
           usage,
           process.env.GEMINI_MODEL ?? "gemini-2.5-flash"
@@ -196,6 +155,14 @@ export async function POST(req: NextRequest) {
           title: savedItinerary.title,
           destination: savedItinerary.destination,
         });
+
+        // Location lookup uses external geocoding services. Let the itinerary
+        // become available first, then fill coordinates in the background.
+        if (savedItinerary?.id) {
+          void verifyAndEnrichItinerary(savedItinerary.id).catch((enrichErr) => {
+            console.warn("[generate] Place enrichment skipped:", enrichErr);
+          });
+        }
 
         return savedItinerary;
       } catch (err: any) {

@@ -60,6 +60,7 @@ export function WorldOfTravellersChat() {
     const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:3001";
     const s = io(socketUrl, {
       transports: ["websocket", "polling"],
+      withCredentials: true,
       reconnectionAttempts: 5,
     });
 

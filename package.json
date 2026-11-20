@@ -3,7 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "node scripts/dev-with-realtime.mjs",
+    "dev:next": "next dev",
     "realtime": "tsx realtime-server.ts",
     "build": "prisma generate && prisma migrate deploy && next build",
     "start": "next start",

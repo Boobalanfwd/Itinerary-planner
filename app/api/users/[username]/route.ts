@@ -13,6 +13,15 @@ export async function GET(
     const session = await getServerSession(authOptions);
 
     // Find user by username or email prefix
+    const currentUser = session?.user?.email
+      ? await prisma.user.findUnique({
+          where: { email: session.user.email },
+          select: { id: true, username: true, email: true },
+        })
+      : null;
+    const isOwnProfile = !!currentUser &&
+      (currentUser.username === username || currentUser.email?.split("@")[0] === username);
+
     const user = await prisma.user.findFirst({
       where: {
         OR: [{ username }, { email: { startsWith: username } }],
@@ -20,7 +29,7 @@ export async function GET(
       include: {
         profile: true,
         itineraries: {
-          where: { isPublic: true },
+          where: isOwnProfile ? {} : { isPublic: true },
           orderBy: { createdAt: "desc" },
           take: 12,
           include: {
@@ -39,24 +48,25 @@ export async function GET(
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
+    const [totalTripCount, destinationGroups] = isOwnProfile
+      ? await Promise.all([
+          prisma.itinerary.count({ where: { userId: user.id } }),
+          prisma.itinerary.groupBy({ by: ["destination"], where: { userId: user.id } }),
+        ])
+      : [user.profile?.totalTrips ?? 0, []];
+
     // Check if current user is following this user
     let isFollowing = false;
-    if (session?.user?.email) {
-      const currentUser = await prisma.user.findUnique({
-        where: { email: session.user.email },
-      });
-
-      if (currentUser) {
-        const follow = await prisma.follow.findUnique({
-          where: {
-            followerId_followingId: {
-              followerId: currentUser.id,
-              followingId: user.id,
-            },
+    if (currentUser) {
+      const follow = await prisma.follow.findUnique({
+        where: {
+          followerId_followingId: {
+            followerId: currentUser.id,
+            followingId: user.id,
           },
-        });
-        isFollowing = !!follow;
-      }
+        },
+      });
+      isFollowing = !!follow;
     }
 
     // Format response
@@ -71,7 +81,8 @@ export async function GET(
       website: user.profile?.website,
       travelStyle: user.profile?.travelStyle || [],
       visitedCountries: user.profile?.visitedCountries || 0,
-      totalTrips: user.profile?.totalTrips || 0,
+      totalTrips: totalTripCount,
+      destinationsExplored: isOwnProfile ? destinationGroups.length : 0,
       coverImage: user.profile?.coverImage,
       isPublic: user.profile?.isPublic ?? true,
       followerCount: user.followerCount,
@@ -125,30 +136,32 @@ export async function PUT(
       where: { email: session.user.email },
     });
 
-    if (!user || user.username !== username) {
+    if (!user || (user.username !== username && user.email?.split("@")[0] !== username)) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
 
     const body = await request.json();
     const { bio, location, website, travelStyle, coverImage } = body;
+    const validImageUrl = typeof coverImage === "string" && /^https?:\/\//i.test(coverImage) ? coverImage : null;
+    const validWebsite = typeof website === "string" && /^https?:\/\//i.test(website) ? website : null;
 
     // Update or create profile
     const profile = await prisma.userProfile.upsert({
       where: { userId: user.id },
       update: {
-        bio,
-        location,
-        website,
-        travelStyle,
-        coverImage,
+        bio: typeof bio === "string" ? bio.slice(0, 300) : null,
+        location: typeof location === "string" ? location.slice(0, 120) : null,
+        website: validWebsite,
+        travelStyle: Array.isArray(travelStyle) ? travelStyle.slice(0, 20) : [],
+        coverImage: validImageUrl,
       },
       create: {
         userId: user.id,
-        bio,
-        location,
-        website,
-        travelStyle,
-        coverImage,
+        bio: typeof bio === "string" ? bio.slice(0, 300) : null,
+        location: typeof location === "string" ? location.slice(0, 120) : null,
+        website: validWebsite,
+        travelStyle: Array.isArray(travelStyle) ? travelStyle.slice(0, 20) : [],
+        coverImage: validImageUrl,
       },
     });
 

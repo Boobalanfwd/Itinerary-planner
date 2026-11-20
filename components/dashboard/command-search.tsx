@@ -16,7 +16,6 @@ import {
   LogOut,
   Sparkles,
   MapPin,
-  CreditCard,
   User,
 } from "lucide-react"
 import {
@@ -117,13 +116,6 @@ export function CommandSearch({ open, onOpenChange, trips = [] }: CommandSearchP
             <span>Travel Marketplace</span>
           </CommandItem>
           <CommandItem
-            onSelect={() => runCommand(() => router.push("/dashboard/pricing"))}
-            className="flex items-center gap-2 cursor-pointer py-2.5"
-          >
-            <CreditCard className="size-4 text-emerald-500" />
-            <span>Pricing & Plans</span>
-          </CommandItem>
-          <CommandItem
             onSelect={() => runCommand(() => router.push("/dashboard/profile"))}
             className="flex items-center gap-2 cursor-pointer py-2.5"
           >
@@ -187,13 +179,6 @@ export function CommandSearch({ open, onOpenChange, trips = [] }: CommandSearchP
               <Moon className="size-4 text-indigo-400" />
             )}
             <span>Toggle Theme (Light / Dark)</span>
-          </CommandItem>
-          <CommandItem
-            onSelect={() => runCommand(() => router.push("/pricing"))}
-            className="flex items-center gap-2 cursor-pointer py-2.5"
-          >
-            <CreditCard className="size-4 text-accent" />
-            <span>Upgrade to PRO</span>
           </CommandItem>
           <CommandItem
             onSelect={() => runCommand(() => signOut({ callbackUrl: "/" }))}

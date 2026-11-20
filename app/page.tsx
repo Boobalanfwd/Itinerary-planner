@@ -20,12 +20,10 @@ import { EditActivityModal } from "./components/ui/EditActivityModal";
 import { AIChatAssistant } from "./components/ui/AIChatAssistant";
 import { InstallPrompt } from "./components/ui/InstallPrompt";
 import { SmartRecommendations } from "./components/ui/SmartRecommendations";
-import { UpgradeModal } from "./components/ui/UpgradeModal";
 import { TestSentryButton } from "@/components/monitoring/TestSentryButton";
 import { useItinerary } from "./hooks/useItinerary";
 import { useViewState } from "./hooks/useViewState";
 import { useActivityEditor } from "./hooks/useActivityEditor";
-import { useSubscription } from "./hooks/useSubscription";
 
 /**
  * Main Page Component — Wander.AI Landing & In-App Generator Views
@@ -50,9 +48,6 @@ export default function Page() {
   // Chat assistant state
   const [showChat, setShowChat] = useState(false);
 
-  // Subscription state
-  const { canCreateItinerary, tier } = useSubscription();
-  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
 
   // Custom hooks for state management
   const {
@@ -88,12 +83,6 @@ export default function Page() {
    * Handle itinerary generation
    */
   const handleGenerate = async (prompt: string) => {
-    // Check subscription limits for authenticated users
-    if (isAuthenticated && !canCreateItinerary()) {
-      setShowUpgradeModal(true);
-      return;
-    }
-
     navigateToLoading();
     window.scrollTo({ top: 0, behavior: "smooth" });
 
@@ -263,14 +252,6 @@ export default function Page() {
           onClose={cancelEditing}
         />
       )}
-
-      {/* Upgrade Modal */}
-      <UpgradeModal
-        isOpen={showUpgradeModal}
-        onClose={() => setShowUpgradeModal(false)}
-        feature="Unlimited Itineraries"
-        currentPlan={tier}
-      />
 
       {/* AI Chat Assistant */}
       {showChat && (

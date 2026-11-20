@@ -57,7 +57,7 @@
    ```bash
    npm run dev
    ```
-   Open [http://localhost:3000](http://localhost:3000) in your browser.
+   This starts Next.js and the authenticated Socket.IO service together. Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 ---
 
@@ -68,6 +68,8 @@
 | `DATABASE_URL` | **Yes** | PostgreSQL connection URL |
 | `NEXTAUTH_SECRET` | **Yes** | Secret for signing NextAuth JWTs (`openssl rand -base64 32`) |
 | `NEXTAUTH_URL` | **Yes** | Base application URL (e.g. `http://localhost:3000`) |
+| `SOCKET_PORT` | No | Port for the Socket.IO service (default `3001`) |
+| `NEXT_PUBLIC_SOCKET_URL` | No | Public Socket.IO URL used by the chat client (default `http://localhost:3001`) |
 | `GEMINI_API_KEY` | **Yes** | Google Gemini API key from Google AI Studio |
 | `GEMINI_MODEL` | No | Model name (default: `gemini-2.5-flash`) |
 | `NEXT_PUBLIC_MAPBOX_TOKEN`| No | Public Mapbox token (`pk.*`) for map rendering |
@@ -86,6 +88,8 @@
 | `SENTRY_PROJECT` | No | Sentry project slug |
 
 See [`.env.example`](./.env.example) for a pre-configured template with documentation.
+
+For production, run `npm run realtime` as a persistent Node service with the same `DATABASE_URL`, `NEXTAUTH_SECRET`, and `NEXTAUTH_URL`, expose it through a TLS-enabled WebSocket proxy on the app's site, and set `NEXT_PUBLIC_SOCKET_URL` to that endpoint. WebRTC uses STUN by default; a TURN service may be needed for users behind restrictive networks.
 
 ---
 
